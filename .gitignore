@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+src/helpers/media-session/bin/
+src/helpers/media-session/obj/
+src/helpers/media-session/publish/
+*.log
+*.tmp
+.env
