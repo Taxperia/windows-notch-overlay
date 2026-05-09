@@ -95,6 +95,6 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_COND
 
 ## License
 
-Project code is licensed under the MIT License unless a file states otherwise. See [LICENSE](LICENSE).
+Project code is licensed under the Apache License 2.0 unless a file states otherwise. See [LICENSE](LICENSE).
 
 DynamicWin and any DynamicWin-owned material remain under their own license and ownership.
