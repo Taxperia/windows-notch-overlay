@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Windows Notch Overlay</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="notch" class="notch theme-attached" aria-label="Windows notch overlay">
+      <section class="collapsed-strip">
+        <div id="timeCompact" class="time-compact">--:--:--</div>
+        <div id="dateCompact" class="date-compact">--.--.----</div>
+        <div id="alarmCompact" class="alarm-compact" hidden>
+          <div id="alarmCompactName" class="alarm-compact-name">Alarm</div>
+          <div id="alarmCompactTime" class="alarm-compact-time">--:--</div>
+        </div>
+      </section>
+
+      <section class="expanded-panel">
+        <section id="controlCenter" class="control-center" aria-label="Kontrol merkezi">
+          <header class="dynamic-topbar">
+            <div class="mini-clock">
+              <div id="timeFull" class="time-full">--:--:--</div>
+              <div id="dateFull" class="date-full">Tarih yükleniyor</div>
+            </div>
+            <button class="settings-button" data-open-settings title="Ayarlar" aria-label="Ayarlar">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7.1 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
+              </svg>
+            </button>
+          </header>
+
+          <section class="status-strip" data-setting-visibility="showStatus" aria-label="Durum">
+            <span id="cpuValue">CPU --%</span>
+            <span id="gpuValue">GPU --%</span>
+            <span id="ramValue">RAM --%</span>
+            <span id="activeWindow">Uygulama bekleniyor</span>
+          </section>
+
+          <section id="alarmStage" class="alarm-stage" aria-label="Alarm" hidden>
+            <div class="alarm-stage-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="13" r="7" />
+                <path d="M12 10v4l3 2M5 3 2 6M19 3l3 3" />
+              </svg>
+            </div>
+            <div class="alarm-stage-detail">
+              <div class="alarm-stage-label">Alarm</div>
+              <div id="alarmStageName" class="alarm-stage-name">Alarm</div>
+              <div id="alarmStageTime" class="alarm-stage-time">--:--</div>
+              <div id="alarmStageRemaining" class="alarm-stage-remaining">1 dk içinde kapanır</div>
+            </div>
+            <button class="alarm-dismiss" data-dismiss-alarm>Alarmı kapat</button>
+          </section>
+
+          <section id="mediaStage" class="media-stage" aria-label="Medya görünümü" hidden>
+            <button class="media-back" data-media-back title="Menülere dön" aria-label="Menülere dön">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <div id="mediaAvatar" class="media-avatar">
+              <img id="mediaCover" class="media-cover" alt="" hidden />
+              <span id="mediaAvatarText" class="media-avatar-text">S</span>
+            </div>
+            <div class="media-detail">
+              <div id="mediaStageApp" class="media-app">Spotify</div>
+              <div id="mediaStageTitle" class="media-stage-title">Medya bekleniyor</div>
+              <div id="mediaStageArtist" class="media-stage-artist"></div>
+              <div class="media-timeline">
+                <span id="mediaElapsed">0:00</span>
+                <div class="media-track">
+                  <span id="mediaProgress"></span>
+                </div>
+                <span id="mediaDuration">0:00</span>
+              </div>
+              <div class="media-stage-controls">
+                <button class="media-control-button" data-media="previous" title="Önceki" aria-label="Önceki">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m19 20-10-8 10-8v16Z" />
+                    <path d="M5 19V5" />
+                  </svg>
+                </button>
+                <button class="media-control-button primary" data-media="playPause" data-state="play" title="Oynat" aria-label="Oynat">
+                  <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5v14l11-7-11-7Z" />
+                  </svg>
+                  <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M10 4H6v16h4V4Z" />
+                    <path d="M18 4h-4v16h4V4Z" />
+                  </svg>
+                </button>
+                <button class="media-control-button" data-media="next" title="Sonraki" aria-label="Sonraki">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 4 10 8-10 8V4Z" />
+                    <path d="M19 5v14" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div id="mediaWaves" class="media-waves" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </section>
+
+          <section class="menu-carousel" aria-label="Hızlı menüler">
+            <div id="menuPages" class="menu-pages"></div>
+          </section>
+
+          <div id="menuDots" class="menu-dots" aria-hidden="true"></div>
+
+          <footer data-setting-visibility="showMedia">
+            <div class="media-mini">
+              <button class="media-control-button" data-media="previous" title="Önceki" aria-label="Önceki">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m19 20-10-8 10-8v16Z" />
+                  <path d="M5 19V5" />
+                </svg>
+              </button>
+              <button class="media-control-button primary" data-media="playPause" data-state="play" title="Oynat" aria-label="Oynat">
+                <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 5v14l11-7-11-7Z" />
+                </svg>
+                <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 4H6v16h4V4Z" />
+                  <path d="M18 4h-4v16h4V4Z" />
+                </svg>
+              </button>
+              <button class="media-control-button" data-media="next" title="Sonraki" aria-label="Sonraki">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 4 10 8-10 8V4Z" />
+                  <path d="M19 5v14" />
+                </svg>
+              </button>
+              <span id="mediaTitle">Medya kontrolleri hazır</span>
+              <span id="mediaArtist"></span>
+            </div>
+          </footer>
+        </section>
+
+        <section id="toolPanel" class="tool-panel" aria-label="Hızlı araç" hidden>
+          <header class="tool-header">
+            <button class="back-button" data-close-tool title="Kontrol merkezine dön" aria-label="Kontrol merkezine dön">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <div>
+              <h1 id="toolTitle">Araç</h1>
+              <span id="toolSubtitle">Çentik içi işlem</span>
+            </div>
+          </header>
+
+          <section class="tool-view" data-tool-view="alarm" hidden>
+            <form id="alarmForm" class="tool-form">
+              <label>
+                <span>İsim</span>
+                <input id="alarmName" name="name" type="text" maxlength="32" autocomplete="off" placeholder="Alarm" />
+              </label>
+              <label>
+                <span>Saat</span>
+                <input id="alarmDuration" name="time" type="time" step="60" required />
+              </label>
+              <label>
+                <span>Tekrar</span>
+                <select id="alarmRepeat" name="repeat">
+                  <option value="none">Tek sefer</option>
+                  <option value="daily">Her gün</option>
+                </select>
+              </label>
+              <label class="tool-check">
+                <span>Durum</span>
+                <input id="alarmEnabled" name="enabled" type="checkbox" checked />
+              </label>
+              <button class="primary-action" type="submit">Alarm ekle</button>
+            </form>
+            <div id="alarmList" class="alarm-list"></div>
+          </section>
+
+          <section class="tool-view" data-tool-view="search" hidden>
+            <form id="searchForm" class="search-form">
+              <input id="searchInput" type="search" autocomplete="off" placeholder="Ara veya adres yaz" />
+              <button class="primary-action" type="submit">Ara</button>
+            </form>
+          </section>
+        </section>
+
+        <section id="settingsPanel" class="settings-panel" aria-label="Uygulama ayarları" hidden>
+          <aside class="settings-sidebar" aria-label="Ayar bölümleri">
+            <div class="settings-title">Notch Ayarları</div>
+            <button class="settings-nav is-current" data-settings-section="home">Giriş</button>
+            <button class="settings-nav" data-settings-section="general">Genel</button>
+            <button class="settings-nav" data-settings-section="quick">Hızlı menüler</button>
+            <button class="settings-nav" data-settings-section="privacy">Gizlilik</button>
+            <button class="settings-nav" data-settings-section="system">Sistem</button>
+          </aside>
+
+          <section class="settings-main">
+            <header class="settings-header">
+              <button class="back-button" data-close-settings title="Kontrol merkezine dön" aria-label="Kontrol merkezine dön">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+              <h1 id="settingsHeading">Giriş</h1>
+              <div class="settings-search">Ayarları arama</div>
+            </header>
+
+            <div class="settings-scroll">
+              <section class="settings-card settings-section" data-section-panel="home">
+                <div>
+                  <h2>Windows Dynamic Notch</h2>
+                  <p>Kontrol merkezi, gizlilik anahtarları, ekran görüntüsü ve oyun metrikleri tek yerden yönetilir.</p>
+                </div>
+                <div class="settings-stat">
+                  <span id="enabledFeatureCount">--</span>
+                  <small>aktif hızlı menü</small>
+                </div>
+              </section>
+
+              <section class="settings-card settings-section" data-section-panel="general">
+                <h2>Genel</h2>
+                <div class="settings-list">
+                  <div class="settings-row">
+                    <div>
+                      <strong>Durum metrikleri</strong>
+                      <span>CPU, GPU, RAM ve aktif pencere satırını göster.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="appearance.showStatus" aria-label="Durum metrikleri"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Medya satırı</strong>
+                      <span>Oynat/durdur, ileri ve geri kontrollerini göster.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="appearance.showMedia" aria-label="Medya satırı"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Saniyeli saat</strong>
+                      <span>Kapalı görünümde saniyeyi de göster.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="appearance.compactSeconds" aria-label="Saniyeli saat"></button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-card settings-section" data-section-panel="quick">
+                <h2>Hızlı menüler</h2>
+                <div id="featureSettingsList" class="settings-list"></div>
+              </section>
+
+              <section class="settings-card settings-section" data-section-panel="privacy">
+                <h2>Gizlilik</h2>
+                <div class="settings-list compact">
+                  <div class="settings-row">
+                    <div>
+                      <strong>Mikrofon kilidi</strong>
+                      <span>Windows kullanıcı gizlilik izinlerini Allow/Deny olarak değiştirir.</span>
+                    </div>
+                    <button data-action="microphone" class="inline-action">Değiştir</button>
+                  </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Kamera kilidi</strong>
+                      <span>Windows kamera gizlilik izinlerini Allow/Deny olarak değiştirir.</span>
+                    </div>
+                    <button data-action="camera" class="inline-action">Değiştir</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-card settings-section" data-section-panel="system">
+                <h2>Sistem</h2>
+                <div class="settings-list compact">
+                  <div class="settings-row">
+                    <div>
+                      <strong>Bluetooth</strong>
+                      <span>Adaptörü açıp kapatma Windows yönetici izni gerektirebilir.</span>
+                    </div>
+                    <button data-action="bluetooth" class="inline-action">Değiştir</button>
+                  </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Uygulamadan çık</strong>
+                      <span>Çentik overlay uygulamasını kapatır.</span>
+                    </div>
+                    <button data-action="quit" class="inline-action danger">Çık</button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <span id="toast" class="toast" aria-live="polite"></span>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

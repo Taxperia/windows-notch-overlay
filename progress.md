@@ -1,0 +1,103 @@
+# Progress
+
+## Tamamlananlar
+
+- Electron proje iskeleti kuruldu.
+- Always-on-top, transparent, frameless overlay pencere oluşturuldu.
+- Üst orta konumlandırma eklendi.
+- Attached ve floating tema altyapısı eklendi.
+- Saat/tarih için preload fallback eklendi.
+- PowerShell kullanımı kaldırıldı.
+- Aktif pencere okuma Windows API ile yapılıyor.
+- Medya tuşları Windows API ile gönderiliyor.
+- CPU/RAM ve NVIDIA GPU metrikleri okunuyor.
+- Hover durumunda pencere tek seferde genişliyor; görsel geçiş CSS ile smooth yapılıyor.
+- Dinamik hızlı menü carousel yapısı eklendi.
+- Her sayfada 8 menü tile'ı görünüyor.
+- Carousel mouse wheel, mouse ile sürükleme ve sayfa noktaları ile kontrol ediliyor.
+- Ayarlar çarkı geniş panelin sağ üstüne yerleştirildi.
+- El feneri, konum, otomatik döndür ve uçak modu menüden kaldırıldı.
+- Mikrofon menüsü eklendi.
+- Kamera ve mikrofon için Windows gizlilik state okuma/yazma provider'ı eklendi.
+- Bluetooth için Windows bağlı aygıt durumunu okuyan provider eklendi.
+- UI metinleri Türkçe karakterlerle güncellendi.
+- Uygulama içi ayarlar ekranı eklendi.
+- Ayarlar çarkı artık Windows ayarlarını değil uygulama ayarlarını açıyor.
+- Hızlı menü öğeleri uygulama ayarlarından kapatılıp açılabiliyor.
+- Ayarlar `userData/settings.json` altında kalıcı saklanıyor.
+- Hızlı menü renklerindeki `linear-gradient` kullanımı kaldırıldı.
+- Ekran görüntüsü tile'ı artık doğrudan tam ekran görüntüsü alıp dosyaya kaydediyor.
+- Bluetooth tile'ı adaptörü `pnputil` ile açıp kapatmayı deniyor; Windows yönetici izni isterse kullanıcıya net mesaj dönüyor.
+- Mikrofon kapatma akışı Windows gizlilik iznine ek olarak `AudioEndpoint` capture aygıtlarını disable/enable etmeyi deniyor.
+- Aygıt seviyesi mikrofon ve Bluetooth işlemleri için PowerShell yerine Windows `ShellExecuteW` + `runas` ile UAC başlatılıyor.
+- `pnputil` bazı erişim engeli hatalarında exit code `0` döndürebildiği için stdout içindeki `Failed to enable/disable device` çıktısı artık hata sayılıyor.
+- Mikrofon yeniden başlatma sonrası kapalı kalırsa açma işlemi disabled capture endpoint'leri UAC ile tekrar enable ediyor.
+- Mikrofonun normal aç/kapat akışı `pnputil disable` yerine Core Audio mute/unmute + Windows privacy `Allow/Deny` modeline çekildi.
+- Eski sürümden disabled kalmış mikrofon endpoint'leri varsa açma sırasında onarım akışı ayrıca deneniyor.
+- Mikrofon kapatma artık Windows privacy `Deny` yazmıyor; uygulamaların stream'i kopmasın diye privacy açık kalıyor ve sadece Core Audio mute kullanılıyor.
+- Mikrofon açılırken Bluetooth/Hands-Free endpoint'i otomatik varsayılan yapma davranışı kaldırıldı.
+- Mikrofon açma/kapama artık Windows'un mevcut varsayılan giriş aygıtına müdahale etmiyor.
+- Uygulama mikrofonu kapalı bırakarak çıkarsa mikrofon endpoint'lerini otomatik unmute eden guard eklendi.
+- Mikrofon hızlı menü aksiyonu, kullanıcının Windows ses ayarlarını daha fazla değiştirmemek için geçici olarak sistem değiştirmeyen moda alındı.
+- Sessiz mod tile'ı artık Windows bildirim ayarlarını açmak yerine global toast durumunu toggle ediyor.
+- Karanlık mod tile'ı ayarlar sayfası açmadan açık/koyu tema kayıtlarını değiştiriyor.
+- Güç tasarrufu tile'ı ayar açmadan enerji tasarrufu DC eşiğini değiştiriyor.
+- Ağ tile'ı ayarlar sayfası yerine hızlı ağ panelini açıyor.
+- Göz rahatlığı tile'ı ayar sayfası açmıyor; güvenli native toggle eklenene kadar hızlı işlemler panelini açıyor.
+- Sessiz mod tile'ı Odaklanma yardımı olarak yeniden adlandırıldı.
+- Göz rahatlığı tile'ı Gece Işığı olarak yeniden adlandırıldı.
+- Güç Tasarrufu tile'ı batarya yoksa Windows güç planını Güç Tasarrufu planına alacak şekilde güncellendi.
+- Oyun çubuğu ve Görevler hızlı menüden kaldırıldı.
+- Alarm tile'ı Windows Saat uygulamasına gitmek yerine çentik içinde alarm formu açıyor.
+- Arama tile'ı Windows aramasına gitmek yerine çentik içinde arama inputu açıyor.
+- Arama gönderimi varsayılan tarayıcıda Google araması veya URL açma olarak main process'e taşındı.
+- Hızlı menü click akışı pointer capture sorunlarına karşı `pointerup` üzerinden de çalışacak şekilde düzeltildi.
+- Toast mesajı medya footer'ından çıkarılıp panel geneline taşındı; medya satırı kapalı olsa bile komut sonucu görünür.
+- Spotify şarkı çalarken hover durumunda ana menü yerine dinamik medya sahnesi açılıyor.
+- Spotify medya sahnesine şarkı adı, sanatçı, avatar, timeline, oynat/duraklat, önceki/sonraki ve menülere dönüş butonu eklendi.
+- Spotify çalarken medya sahnesinin sağında hareketli dikey ses çubukları gösteriliyor.
+- Medya kontrol butonları yazı yerine ikon-only görünüme geçirildi.
+- Spotify ve aktif alarm sahneleri için ayrı pencere boyutları eklendi; içerik kısa olduğunda 500x330 boş panel yerine kompakt dinamik yükseklik kullanılıyor.
+- Spotify medya bilgisi için Windows Media Session / SMTC helper eklendi.
+- Spotify kapak resmi `thumbnailDataUrl` olarak alınıp medya avatarında gerçek albüm kapağı şeklinde gösteriliyor.
+- SMTC helper yoksa veya metadata alınamazsa eski Spotify pencere başlığı fallback'i korunuyor.
+- Alarm formu dakika sayısı yerine net saat seçimine geçirildi.
+- Alarm zamanı geldiğinde kapalı çentikte saat/tarih yerine alarm adı ve alarm saati gösteriliyor.
+- Alarm çalarken hover durumunda alarm kapatma sahnesi açılıyor.
+- Alarm 1 dakika sonra otomatik kapanıyor ve saat/tarih görünümü geri geliyor.
+- Alarm çalarken geçici Web Audio uyarı sesi çalıyor; ileride dosya tabanlı alarm sesiyle değiştirilebilir.
+
+## Mevcut Durum
+
+- Varsayılan tema: `attached`.
+- Alternatif tema: `floating`.
+- Menü öğeleri `src/renderer/renderer.js` içindeki `MENU_ITEMS` listesinden üretiliyor.
+- Kamera tile'ı Windows gizlilik durumuna göre `Açık` veya `Kapalı` görünür.
+- Mikrofon tile'ı Windows gizlilik durumu ve aktif capture endpoint durumuna göre `Açık` veya `Kapalı` görünür.
+- Kamera tıklaması `HKCU\\...\\CapabilityAccessManager\\ConsentStore` altında `Allow/Deny` yazar ve mevcut uygulama alt izinlerini de aynı global switch'e yaklaştırır.
+- Mikrofon tıklaması Core Audio üzerinden capture endpoint'lerini mute/unmute eder; açma sırasında Windows privacy `Allow` ile onarılır, varsayılan mikrofon seçimi değiştirilmez.
+- Mikrofon kapalıyken uygulamadan çıkılırsa sistem mute durumu geri alınır.
+- Mevcut build'de mikrofon tile'ına basmak Windows mikrofon ayarını değiştirmez; durum sadece okunur.
+- Hızlı menüde sistem tile'ları mümkün olduğunca doğrudan toggle eder; ayarlar sayfasına yönlendirme kaldırıldı.
+- Alarm kayıtları renderer `localStorage` içinde saklanır ve çentik açıkken süreleri takip edilir.
+- Alarm aktifken dinamik çentikte medya sahnesinden daha öncelikli alarm modu gösterilir.
+- Mikrofon açılırken eski sürümden kapalı kalmış PnP endpoint'leri bulunursa yönetici onaylı onarım denenir.
+- Bluetooth tile'ı Windows bağlı aygıt durumunu `pnputil` üzerinden okumaya çalışır.
+- Desteklenen hızlı aksiyonların bazıları Windows ayarları veya sistem URI'ları ile açılıyor.
+- Tile boyutları kompakt tutuluyor; aktif renkler düz solid renklerle veriliyor.
+- Uygulama ayarları görünümü çentik penceresini daha geniş bir ayar paneline dönüştürüyor.
+- Tile'a basıldığında kısa `busy` geri bildirimi gösteriliyor.
+- Spotify metadata'sı SMTC helper ile gerçek medya oturumundan okunur; süre, pozisyon ve kapak resmi bu kaynaktan gelir.
+- Spotify medya sahnesindeki geri butonu aynı hover oturumunda hızlı menüleri geri getirir; çentik kapanıp tekrar açıldığında Spotify hala çalıyorsa medya sahnesi tekrar öne gelir.
+- Spotify metadata'sı önce SMTC helper ile okunur; başlık fallback'i yalnızca SMTC başarısızsa kullanılır.
+
+## Sonraki İşler
+
+- Sessiz mod için daha net Windows DND state provider'ı eklemek.
+- Kamera/mikrofon kapatma için yönetici modunda aygıt seviyesinde disable seçeneği tasarlamak.
+- Menü öğelerini kullanıcı tarafından sıralanabilir hale getirmek.
+- Ayarlar paneline tema, menü sıralama ve kısayol ayarları eklemek.
+- Bildirimleri gösteren dinamik durum modu eklemek.
+- SMTC helper'ı ileride self-contained veya native modül haline getirip .NET runtime bağımlılığını azaltmak.
+- FPS ve sıcaklık verileri için RTSS/PresentMon/LibreHardwareMonitor provider'ı eklemek.
+- Tray menüsü ve çıkış/kilitli kalma ayarı eklemek.

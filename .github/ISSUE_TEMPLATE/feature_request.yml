@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or new quick action.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Notch UI
+        - Quick actions
+        - Media
+        - Alarms
+        - Search
+        - Windows integration
+        - Settings
+        - Build/release
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention any other approach that could solve the same problem.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add mockups, screenshots, links, or platform details if useful.
