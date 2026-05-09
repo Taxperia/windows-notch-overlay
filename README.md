@@ -73,7 +73,7 @@ Windows Notch Overlay was inspired by the idea behind [DynamicWin](https://githu
 
 This repository is an independent implementation with a different stack, design direction, architecture, and feature set. It is not affiliated with, endorsed by, or derived from the DynamicWin codebase. The concept inspiration is acknowledged explicitly because DynamicWin helped show that a dynamic notch experience can make sense on Windows.
 
-DynamicWin is licensed under Creative Commons Attribution-ShareAlike 4.0 International. A local copy of that license text is kept in [adamların lisansı.md](<adamların lisansı.md>) for reference, and additional attribution notes are kept in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+DynamicWin is licensed under Creative Commons Attribution-ShareAlike 4.0 International. A local copy of that license text is kept in [DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md](DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md) for reference, and additional attribution notes are kept in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Development
 
