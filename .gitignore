@@ -4,6 +4,12 @@ release/
 src/helpers/media-session/bin/
 src/helpers/media-session/obj/
 src/helpers/media-session/publish/
+src/helpers/notifications/bin/
+src/helpers/notifications/obj/
+src/helpers/notifications/publish/
 *.log
 *.tmp
 .env
+FAZ_PLANI.md
+idea.md
+TURKCE_OKUMA_NOTLARI.md

@@ -15,11 +15,21 @@
 - Dinamik hızlı menü carousel yapısı eklendi.
 - Her sayfada 8 menü tile'ı görünüyor.
 - Carousel mouse wheel, mouse ile sürükleme ve sayfa noktaları ile kontrol ediliyor.
+- Hızlı menü tile'ları uzun basıp sürükleme ile sayfalar arasında yeniden sıralanabiliyor.
+- Ayarlar > Hızlı menüler aç/kapat listesine dikey scrollbar eklendi.
 - Ayarlar çarkı geniş panelin sağ üstüne yerleştirildi.
 - El feneri, konum, otomatik döndür ve uçak modu menüden kaldırıldı.
 - Mikrofon menüsü eklendi.
 - Kamera ve mikrofon için Windows gizlilik state okuma/yazma provider'ı eklendi.
 - Bluetooth için Windows bağlı aygıt durumunu okuyan provider eklendi.
+- Bluetooth adaptörü bulma akışı, ağ adaptörlerine dokunmamak için sadece Bluetooth class ve açıklamasında Bluetooth radyo/adaptör kimliği olan aygıtlarla sınırlandı.
+- Ses mikseri hızlı menüsü eklendi.
+- Parlaklık hızlı menüsü ve çentik içi slider görünümü eklendi.
+- Harici Uygulamalar hızlı menüsü kullanıcı dosya seçimi yerine yerleşik YouTube, YouTube Music, Discord ve GitHub entegrasyonlarını gösteriyor.
+- Dil, Tema ve Görünüm içerikleri ayrı sidebar menüsü yerine Giriş ekranına taşındı.
+- Dil dropdown'ı `src/renderer/i18n/tr.json` ve `src/renderer/i18n/en.json` üzerinden besleniyor; yeni JSON dosyaları eklenebilir.
+- Görünüm ayarında attached, floating, pill ve kompakt çentik tasarımları önizlemeyle seçilebiliyor.
+- Tema ayarında varsayılan, grafit, kontrast, light, forest, ruby ve özel renk seçenekleri eklendi.
 - UI metinleri Türkçe karakterlerle güncellendi.
 - Uygulama içi ayarlar ekranı eklendi.
 - Ayarlar çarkı artık Windows ayarlarını değil uygulama ayarlarını açıyor.
@@ -28,13 +38,13 @@
 - Hızlı menü renklerindeki `linear-gradient` kullanımı kaldırıldı.
 - Ekran görüntüsü tile'ı artık doğrudan tam ekran görüntüsü alıp dosyaya kaydediyor.
 - Bluetooth tile'ı adaptörü `pnputil` ile açıp kapatmayı deniyor; Windows yönetici izni isterse kullanıcıya net mesaj dönüyor.
-- Mikrofon kapatma akışı Windows gizlilik iznine ek olarak `AudioEndpoint` capture aygıtlarını disable/enable etmeyi deniyor.
+- Mikrofon hızlı menüsünün kapatma davranışı kaldırıldı; artık yalnızca mikrofon erişimini onarma/açık tutma yönünde çalışıyor.
 - Aygıt seviyesi mikrofon ve Bluetooth işlemleri için PowerShell yerine Windows `ShellExecuteW` + `runas` ile UAC başlatılıyor.
 - `pnputil` bazı erişim engeli hatalarında exit code `0` döndürebildiği için stdout içindeki `Failed to enable/disable device` çıktısı artık hata sayılıyor.
 - Mikrofon yeniden başlatma sonrası kapalı kalırsa açma işlemi disabled capture endpoint'leri UAC ile tekrar enable ediyor.
-- Mikrofonun normal aç/kapat akışı `pnputil disable` yerine Core Audio mute/unmute + Windows privacy `Allow/Deny` modeline çekildi.
+- Eski Core Audio mute/unmute + Windows privacy `Allow/Deny` aç/kapat modeli terk edildi; uygulama mikrofonu kapalıya çekmiyor.
 - Eski sürümden disabled kalmış mikrofon endpoint'leri varsa açma sırasında onarım akışı ayrıca deneniyor.
-- Mikrofon kapatma artık Windows privacy `Deny` yazmıyor; uygulamaların stream'i kopmasın diye privacy açık kalıyor ve sadece Core Audio mute kullanılıyor.
+- Mikrofon kapatma artık Windows privacy `Deny` yazmıyor ve Core Audio mute kullanmıyor.
 - Mikrofon açılırken Bluetooth/Hands-Free endpoint'i otomatik varsayılan yapma davranışı kaldırıldı.
 - Mikrofon açma/kapama artık Windows'un mevcut varsayılan giriş aygıtına müdahale etmiyor.
 - Uygulama mikrofonu kapalı bırakarak çıkarsa mikrofon endpoint'lerini otomatik unmute eden guard eklendi.
@@ -75,7 +85,7 @@
 - Kamera tile'ı Windows gizlilik durumuna göre `Açık` veya `Kapalı` görünür.
 - Mikrofon tile'ı Windows gizlilik durumu ve aktif capture endpoint durumuna göre `Açık` veya `Kapalı` görünür.
 - Kamera tıklaması `HKCU\\...\\CapabilityAccessManager\\ConsentStore` altında `Allow/Deny` yazar ve mevcut uygulama alt izinlerini de aynı global switch'e yaklaştırır.
-- Mikrofon tıklaması Core Audio üzerinden capture endpoint'lerini mute/unmute eder; açma sırasında Windows privacy `Allow` ile onarılır, varsayılan mikrofon seçimi değiştirilmez.
+- Mikrofon tıklaması Windows privacy `Allow` ve capture unmute onarımı yapar; mikrofonu kapatmaz ve varsayılan mikrofon seçimini değiştirmez.
 - Mikrofon kapalıyken uygulamadan çıkılırsa sistem mute durumu geri alınır.
 - Mevcut build'de mikrofon tile'ına basmak Windows mikrofon ayarını değiştirmez; durum sadece okunur.
 - Hızlı menüde sistem tile'ları mümkün olduğunca doğrudan toggle eder; ayarlar sayfasına yönlendirme kaldırıldı.
@@ -83,9 +93,15 @@
 - Alarm aktifken dinamik çentikte medya sahnesinden daha öncelikli alarm modu gösterilir.
 - Mikrofon açılırken eski sürümden kapalı kalmış PnP endpoint'leri bulunursa yönetici onaylı onarım denenir.
 - Bluetooth tile'ı Windows bağlı aygıt durumunu `pnputil` üzerinden okumaya çalışır.
+- Bluetooth toggle genel aygıt listesini taramaz; sadece güvenli Bluetooth radyo/adaptör hedeflerini açıp kapatır.
+- Ses mikseri tile'ı `sndvol.exe` açar.
+- Parlaklık tile'ı WMI sağlayıcısı destekliyorsa ekran parlaklığını okur ve değiştirir; harici ekranlarda destek yoksa açık mesaj gösterir.
+- Harici Uygulamalar menüsü kodla tanımlı servis hedeflerini çentikten açar.
+- Windows ile başlat tercihi Electron login item ayarına uygulanır.
 - Desteklenen hızlı aksiyonların bazıları Windows ayarları veya sistem URI'ları ile açılıyor.
 - Tile boyutları kompakt tutuluyor; aktif renkler düz solid renklerle veriliyor.
 - Uygulama ayarları görünümü çentik penceresini daha geniş bir ayar paneline dönüştürüyor.
+- Windows bildirimleri WinRT helper üzerinden izleniyor; yeni bildirim geldiğinde geniş menüde saat/tarih yerine sağdan sola kayan bildirim ticker'ı gösteriliyor.
 - Tile'a basıldığında kısa `busy` geri bildirimi gösteriliyor.
 - Spotify metadata'sı SMTC helper ile gerçek medya oturumundan okunur; süre, pozisyon ve kapak resmi bu kaynaktan gelir.
 - Spotify medya sahnesindeki geri butonu aynı hover oturumunda hızlı menüleri geri getirir; çentik kapanıp tekrar açıldığında Spotify hala çalıyorsa medya sahnesi tekrar öne gelir.
@@ -95,9 +111,8 @@
 
 - Sessiz mod için daha net Windows DND state provider'ı eklemek.
 - Kamera/mikrofon kapatma için yönetici modunda aygıt seviyesinde disable seçeneği tasarlamak.
-- Menü öğelerini kullanıcı tarafından sıralanabilir hale getirmek.
-- Ayarlar paneline tema, menü sıralama ve kısayol ayarları eklemek.
-- Bildirimleri gösteren dinamik durum modu eklemek.
+- Dil çeviri kapsamını tüm statik UI metinlerine genişletmek.
+- Harici Uygulamalar için ikon ve kategori desteği eklemek.
 - SMTC helper'ı ileride self-contained veya native modül haline getirip .NET runtime bağımlılığını azaltmak.
 - FPS ve sıcaklık verileri için RTSS/PresentMon/LibreHardwareMonitor provider'ı eklemek.
 - Tray menüsü ve çıkış/kilitli kalma ayarı eklemek.

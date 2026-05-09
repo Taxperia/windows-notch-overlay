@@ -13,8 +13,16 @@ Bu proje Windows için Electron tabanlı dinamik bir çentik uygulamasıdır. Am
 - Ana alan telefon kontrol merkezi gibi hızlı menü tile'ları gösterir.
 - Bir sayfada 8 menü görünür.
 - 8'den fazla menü varsa yatay kaydırma ve sayfa noktaları kullanılır.
+- Ayarlar > Hızlı menüler bölümündeki aç/kapat listesi kendi içinde dikey scrollbar kullanmalıdır.
 - Yeni özellikler menü veri listesine eklenince otomatik olarak carousel içinde görünmelidir.
 - Kullanıcı hızlı menü öğelerini uygulama ayarlarından kapatıp açabilmelidir.
+- Kullanıcı hızlı menü öğelerine uzun basıp sürükleyerek sıralamayı sayfalar arasında değiştirebilmelidir.
+- Dil, Tema ve Görünüm ayrı sidebar menüsü olmamalıdır; Giriş ekranında toplanmalıdır.
+- Dil seçimi dropdown olmalı ve `src/renderer/i18n/*.json` dosyalarından dinamik beslenmelidir.
+- Tema seçenekleri hazır preset'ler, Light tema ve özel renk seçimi içermelidir.
+- Görünüm bölümünde ekran üstüne yapışık varsayılan çentik, ekrandan ayrık border'lı floating çentik ve ek görünümler önizlemeyle seçilebilmelidir.
+- Windows ile başlat ayarı uygulama içinden kontrol edilmelidir.
+- Release açıklamalarında yeni gelen özellikler ve hata düzeltmeleri ayrı biçimde yazılmalıdır.
 
 ## Menü Kapsamı
 
@@ -22,14 +30,18 @@ Bu proje Windows için Electron tabanlı dinamik bir çentik uygulamasıdır. Am
 - Kamera ve mikrofon menüleri Windows gizlilik durumunu gösterir.
 - Kamera veya mikrofon kapatıldığında Windows kullanıcı gizlilik izinleri `Deny` yapılır.
 - Kamera veya mikrofon açıldığında aynı izinler `Allow` yapılır.
-- Mikrofon kapatma sadece privacy iznine bırakılmamalıdır; açık Win32 uygulamaların ses almaması için Core Audio capture endpoint'leri mute/unmute edilmelidir.
+- Mikrofon hızlı menüsü sistem sesini kapatmamalı, aygıt disable etmemeli ve Windows privacy değerlerini kapalıya çekmemelidir.
 - Mikrofon için `pnputil disable` normal akışta kullanılmamalıdır; Windows yeniden başlatma sonrası endpoint kapalı kalabildiği için yalnızca eski bozuk durumu onarmak amacıyla kullanılmalıdır.
 - Mikrofon kapatılırken Windows privacy `Deny` yazılmamalıdır; bu bazı uygulamalarda stream'i koparıp açınca sesin geri gelmemesine neden olur.
 - Mikrofon açılırken kullanıcının Windows'ta seçtiği varsayılan giriş aygıtı değiştirilmemelidir.
-- Mikrofon mute işlemi uygulama oturumu ile sınırlı tutulmalıdır; uygulama çıkarken veya bir önceki çalışmadan guard kalmışsa capture endpoint'leri unmute edilmelidir.
+- Mikrofon onarım işlemi yalnızca `Allow` + capture unmute yönünde olmalıdır; kapatma davranışı kaldırılmıştır.
 - Güvenli mikrofon sağlayıcısı netleşene kadar hızlı menü mikrofon aksiyonu Windows capture ayarını değiştirmemelidir.
 - Bluetooth tile'ı Windows bağlı aygıt durumunu okumaya çalışır ve adaptörü `pnputil` ile açıp kapatmayı dener.
+- Bluetooth adaptör algılama genel aygıt listesini taramamalıdır; ağ/internet adaptörlerine dokunmamak için sadece Bluetooth class içindeki ve açıklamasında Bluetooth radyo/adaptör kimliği olan aygıtlar hedeflenmelidir.
 - Bluetooth adaptörü aç/kapatma Windows yönetici izni isteyebilir; izin yoksa UI bunu açıkça söylemelidir.
+- Ses mikseri tile'ı Windows ses mikserini açmalıdır.
+- Parlaklık tile'ı çentik içinde slider göstermeli; desteklenmeyen ekranlarda kullanıcıya açık mesaj vermelidir.
+- Harici Uygulamalar tile'ı kullanıcı dosya seçimi yaptırmamalıdır; YouTube, YouTube Music, Discord, GitHub gibi projeye kodla eklenen yerleşik servisleri göstermelidir.
 - Sessiz mod Windows bildirim ayarlarıyla uyumlu çalışacak şekilde ele alınır.
 - Sessiz mod, karanlık mod, güç tasarrufu ve ağ tile'ları kullanıcıyı Windows ayarlarına atmamalıdır; doğrudan toggle ya da hızlı panel davranışı tercih edilmelidir.
 - Gece ışığı için belgelenmemiş CloudStore binary hack'i kullanılmamalıdır; güvenli sağlayıcı yoksa ayar sayfası açmadan hızlı işlemler paneli gösterilmelidir.
@@ -43,6 +55,7 @@ Bu proje Windows için Electron tabanlı dinamik bir çentik uygulamasıdır. Am
 - Alarm aktifken hover genişlemesinde alarm kapatma sahnesi gösterilmeli ve kullanıcı alarmı buradan kapatabilmelidir.
 - Alarm aktifliği 1 dakika sürmeli; süre dolunca alarm otomatik kapanmalı ve saat/tarih görünümü geri gelmelidir.
 - Alarm durumu medya gibi diğer dinamik sahnelerden önceliklidir.
+- Windows bildirimi geldiğinde geniş menüdeki saat/tarih alanı geçici olarak gizlenmeli ve bildirim metni sağdan sola kayan ticker olarak gösterilmelidir.
 - UI metinlerinde Türkçe karakter kullanılmalıdır.
 - Hızlı menü renklerinde `linear-gradient` kullanılmamalıdır; solid renklerle durum anlatılmalıdır.
 - Spotify gibi aktif dinamik durumlar ana hızlı menüden daha öncelikli olabilir.
@@ -59,6 +72,8 @@ Bu proje Windows için Electron tabanlı dinamik bir çentik uygulamasıdır. Am
 - Menü öğeleri veri tabanlı olmalıdır; HTML'e tek tek sabitlenmemelidir.
 - Çentik dinamik davranış gösterecek şekilde durum makinesi mantığıyla geliştirilmelidir.
 - Uygulama ayarları `userData/settings.json` altında kalıcı tutulur.
+- Hızlı menü sırası `settings.json` içinde `appearance.menuOrder` olarak kalıcı tutulur.
+- Özel tema renkleri `settings.json` içinde `appearance.customTheme` olarak kalıcı tutulur.
 - Ayarlar görünümü çentiğin daha büyük bir uygulama paneline dönüşmesiyle açılır.
 
 ## Gelecek Özellikler
