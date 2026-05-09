@@ -8,8 +8,11 @@ Windows Notch Overlay is an Electron-based dynamic notch prototype for Windows. 
 - Attached and floating notch themes
 - Smooth hover expansion into a compact control center
 - Data-driven quick action tiles with pagination
-- In-app settings panel for toggling quick actions and appearance options
+- Long-press quick action tiles to reorder them across pages
+- In-app settings panel for language, themes, custom colors, notch appearance, startup, quick actions, privacy, and system options
+- Sound mixer, brightness, and built-in external service launcher quick actions
 - Date and time display in collapsed and expanded states
+- Notification ticker that hides the expanded clock and scrolls new Windows notification text from right to left
 - Spotify-aware media view with cover art, timeline, play/pause, previous, and next controls
 - Media view only opens automatically while Spotify is actively playing
 - Alarm creation inside the notch with active alarm takeover view
@@ -41,11 +44,7 @@ Run the app:
 npm start
 ```
 
-Run with the floating theme:
-
-```powershell
-$env:NOTCH_THEME="floating"; npm start
-```
+The notch design can be switched from the in-app Settings > Appearance panel. The default design attaches to the top edge, while the floating design keeps a bordered notch slightly below the screen edge.
 
 Build a portable Windows release:
 
@@ -63,8 +62,13 @@ This project is Windows-specific. Some data, such as FPS and hardware temperatur
 - Active window and media key control use Win32 APIs through `koffi`.
 - NVIDIA GPU usage and temperature use `nvidia-smi.exe` when available.
 - Media metadata is read through a Windows Media Session / SMTC helper first, with Spotify window-title fallback only when needed.
+- Windows toast notifications are read through a small WinRT helper after notification access is granted.
 - Camera and microphone status are read from Windows privacy and audio state where possible.
 - Microphone toggling is conservative and avoids breaking active streams in apps such as Discord or games.
+- Bluetooth adapter toggling uses `pnputil`, but only targets devices from the Bluetooth class whose description explicitly identifies a Bluetooth radio or adapter.
+- Brightness control uses the Windows WMI monitor brightness provider when the active display exposes it.
+- Language dictionaries are loaded from `src/renderer/i18n/*.json`, so additional languages can be added without changing the settings UI.
+- External service entries are code-defined integrations, such as YouTube, YouTube Music, Discord, and GitHub, and are launched through Electron shell APIs.
 - Network and night light actions avoid opening full Settings pages when a quicker Windows surface is available.
 
 ## Attribution
@@ -79,11 +83,11 @@ DynamicWin is licensed under Creative Commons Attribution-ShareAlike 4.0 Interna
 
 The main Electron process lives in `src/main/`, the preload bridge is `src/preload.js`, and the renderer UI is in `src/renderer/`.
 
-Quick menu items are generated from `MENU_ITEMS` in `src/renderer/renderer.js`. Add a new item there to make it appear in the carousel automatically.
+Quick menu items are generated from `MENU_ITEMS` in `src/renderer/renderer.js`. Add a new item there to make it appear in the carousel automatically. User-defined ordering is stored in `appearance.menuOrder`.
 
 Persistent user settings are stored in Electron `userData/settings.json`.
 
-The Windows Media Session helper source is in `src/helpers/media-session/`. Build output is generated under `src/helpers/media-session/publish/` and is intentionally not committed.
+The Windows Media Session helper source is in `src/helpers/media-session/`. The Windows notification helper source is in `src/helpers/notifications/`. Build output is generated under each helper's `publish/` folder and is intentionally not committed.
 
 ## Security
 

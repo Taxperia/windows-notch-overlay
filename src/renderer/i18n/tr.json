@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "name": "Turkish",
+    "nativeName": "Türkçe"
+  },
+  "settings": {
+    "home": "Giriş",
+    "general": "Genel",
+    "quick": "Hızlı menüler",
+    "external": "Harici Uygulamalar",
+    "privacy": "Gizlilik",
+    "system": "Sistem",
+    "about": "Hakkımda"
+  },
+  "menu": {
+    "focus-assist": "Odaklanma yardımı",
+    "bluetooth": "Bluetooth",
+    "microphone": "Mikrofon",
+    "camera": "Kamera",
+    "screenshot-full": "Ekran görüntüsü",
+    "volume-mixer": "Ses mikseri",
+    "brightness": "Parlaklık",
+    "dark-mode": "Karanlık mod",
+    "night-light": "Gece Işığı",
+    "battery": "Güç Tasarrufu",
+    "network": "Ağ",
+    "alarms": "Alarm",
+    "search": "Arama",
+    "external-apps": "Harici Uygulamalar"
+  },
+  "featureHelp": {
+    "focus-assist": "Odaklanma yardımı durumunu değiştirir.",
+    "bluetooth": "Bluetooth radyo adaptörünü aç/kapatmayı dener.",
+    "microphone": "Mikrofon durumunu gösterir; tıklayınca sadece erişimi onarır.",
+    "camera": "Kamera gizlilik iznini değiştirir.",
+    "screenshot-full": "Tam ekran görüntüsünü Resimler klasörüne kaydeder.",
+    "volume-mixer": "Uygulama içi ses mikserini açar.",
+    "brightness": "Çentik içinde parlaklık kaydırıcısı açar.",
+    "dark-mode": "Windows koyu/açık tema durumunu değiştirir.",
+    "night-light": "Hızlı panel açmadan Gece Işığı durumunu değiştirir.",
+    "battery": "Laptopta pil tasarrufu, kasada güç tasarrufu planını yönetir.",
+    "network": "Windows ağ hızlı panelini açar.",
+    "alarms": "Çentik içinde alarm oluşturur.",
+    "search": "Çentik içinde arama kutusu açar.",
+    "external-apps": "Yerleşik harici servisleri çentikten açar."
+  },
+  "tools": {
+    "brightness": "Parlaklık",
+    "externalApps": "Harici Uygulamalar",
+    "externalSubtitle": "Yerleşik servisler ve hızlı hedefler"
+  }
+}

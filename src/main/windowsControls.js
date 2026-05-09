@@ -6,15 +6,22 @@ const {
   enumerateCaptureEndpoints,
   getCaptureMuteState,
   getDefaultCaptureEndpointIds,
+  setDefaultCaptureEndpoint,
   setCaptureMuted
 } = require('./coreAudio');
+const {
+  getExternalBrightnessState,
+  setExternalBrightnessLevel
+} = require('./monitorBrightness');
 const { broadcastSettingChange, runElevated } = require('./win32');
 
 const CONSENT_STORE = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore';
+const NIGHT_LIGHT_STATE_KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore\\Store\\DefaultAccount\\Current\\default$windows.data.bluelightreduction.bluelightreductionstate\\windows.data.bluelightreduction.bluelightreductionstate';
 const NOTIFICATION_SETTINGS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings';
 const PERSONALIZE_SETTINGS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize';
 const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
 const PNPUTIL_PATH = path.join(SYSTEM_ROOT, 'System32', 'pnputil.exe');
+const POWERSHELL_PATH = path.join(SYSTEM_ROOT, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const NETWORK_INTERFACE_IGNORE = ['vethernet', 'tailscale', 'loopback', 'isatap', 'teredo'];
 const POWER_SAVER_SCHEME_GUID = 'a1841308-3541-4fab-bc81-f71556f20b4a';
 const BALANCED_SCHEME_GUID = '381b4222-f694-41f0-9685-ff5bb260df2e';
@@ -28,6 +35,7 @@ const PRIVACY_CAPABILITIES = {
 
 const ENDPOINT_NAME_PROPERTY = '{b3f8fa53-0004-438e-9003-51a46e139bfc},6';
 const ENDPOINT_FORM_PROPERTY = '{a45c254e-df1c-4efd-8020-67d146a850e0},2';
+const DEVICE_STATE_ACTIVE = 0x1;
 
 function run(command, args, timeoutMs = 3500) {
   return new Promise((resolve, reject) => {
@@ -44,6 +52,42 @@ function run(command, args, timeoutMs = 3500) {
       resolve(stdout.toString());
     });
   });
+}
+
+function runPowerShell(command, timeoutMs = 6000) {
+  return run(POWERSHELL_PATH, [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-Command',
+    command
+  ], timeoutMs);
+}
+
+function quotePowerShellLiteral(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+async function readRegistryBinary(keyPath, valueName) {
+  const psPath = `Registry::HKEY_CURRENT_USER\\${keyPath}`;
+  const command = [
+    `$value = (Get-ItemProperty -LiteralPath ${quotePowerShellLiteral(psPath)} -Name ${quotePowerShellLiteral(valueName)} -ErrorAction Stop).${valueName}`,
+    '[Convert]::ToBase64String([byte[]]$value)'
+  ].join('; ');
+  const output = await runPowerShell(command, 6000);
+  return Buffer.from(output.trim(), 'base64');
+}
+
+async function writeRegistryBinary(keyPath, valueName, data) {
+  const psPath = `Registry::HKEY_CURRENT_USER\\${keyPath}`;
+  const base64 = Buffer.from(data).toString('base64');
+  const command = [
+    `$path = ${quotePowerShellLiteral(psPath)}`,
+    'if (!(Test-Path -LiteralPath $path)) { New-Item -Path $path -Force | Out-Null }',
+    `$bytes = [Convert]::FromBase64String(${quotePowerShellLiteral(base64)})`,
+    `New-ItemProperty -LiteralPath $path -Name ${quotePowerShellLiteral(valueName)} -PropertyType Binary -Value $bytes -Force | Out-Null`
+  ].join('; ');
+  await runPowerShell(command, 6000);
 }
 
 async function readRegistryValue(keyPath, valueName) {
@@ -140,7 +184,8 @@ function parsePnPDevices(output) {
       const description = block.match(/Device Description:\s*(.+)/i)?.[1]?.trim();
       const status = block.match(/Status:\s*(.+)/i)?.[1]?.trim();
       const manufacturer = block.match(/Manufacturer Name:\s*(.+)/i)?.[1]?.trim();
-      return { instanceId, description, status, manufacturer };
+      const className = block.match(/Class Name:\s*(.+)/i)?.[1]?.trim();
+      return { instanceId, description, status, manufacturer, className };
     })
     .filter((device) => device.description);
 }
@@ -212,15 +257,21 @@ async function getBluetoothState() {
 
 function isBluetoothRadioDevice(device) {
   const text = `${device.description} ${device.manufacturer || ''}`.toLowerCase();
+  const className = String(device.className || '').toLowerCase();
+  const instanceId = String(device.instanceId || '').toUpperCase();
+  const hasBluetoothIdentity = className === 'bluetooth' && text.includes('bluetooth');
   const positive = [
+    'bluetooth radio',
+    'bluetooth radyo',
+    'bluetooth adapt',
     'wireless bluetooth',
     'bluetooth adapter',
-    'bluetooth radio',
-    'intel',
-    'realtek',
-    'mediatek',
-    'broadcom',
-    'qualcomm'
+    'kablosuz bluetooth',
+    'intel(r) wireless bluetooth',
+    'realtek bluetooth',
+    'mediatek bluetooth',
+    'broadcom bluetooth',
+    'qualcomm bluetooth'
   ];
   const negative = [
     'avrcp',
@@ -235,17 +286,51 @@ function isBluetoothRadioDevice(device) {
     'hid',
     'jbl',
     'headset',
-    'headphone'
+    'headphone',
+    'network',
+    'ethernet',
+    'wi-fi',
+    'wifi',
+    'wireless-ac',
+    'wireless-ax',
+    'wireless-n',
+    '802.11',
+    'lan',
+    'wan'
   ];
 
   return Boolean(device.instanceId)
+    && hasBluetoothIdentity
     && positive.some((part) => text.includes(part))
+    && (instanceId.startsWith('USB\\') || instanceId.startsWith('PCI\\') || instanceId.startsWith('BTH\\'))
     && !negative.some((part) => text.includes(part));
 }
 
 async function getBluetoothRadioDevices() {
-  const output = await run('pnputil.exe', ['/enum-devices', '/class', 'Bluetooth']);
-  return parsePnPDevices(output).filter(isBluetoothRadioDevice);
+  const queries = [
+    ['/enum-devices', '/class', 'Bluetooth'],
+    ['/enum-devices', '/connected', '/class', 'Bluetooth']
+  ];
+  const seen = new Set();
+  const radios = [];
+
+  for (const args of queries) {
+    try {
+      const output = await run('pnputil.exe', args, 8000);
+      parsePnPDevices(output)
+        .filter(isBluetoothRadioDevice)
+        .forEach((device) => {
+          if (!seen.has(device.instanceId)) {
+            seen.add(device.instanceId);
+            radios.push(device);
+          }
+        });
+    } catch {
+      // Try the next enumeration style.
+    }
+  }
+
+  return radios;
 }
 
 function isAdminRequiredError(error) {
@@ -287,7 +372,7 @@ function assertPnPSuccess(output) {
 
 async function setPnPDevicesEnabled(devices, enabled) {
   const targetDevices = devices.filter((device) => (
-    enabled ? device.status !== 'Started' : device.status === 'Started'
+    enabled ? isPnPDeviceDisabled(device) : device.status === 'Started'
   ));
 
   if (!devices.length) {
@@ -340,6 +425,14 @@ function isAudioCaptureDevice(device) {
     && device.instanceId.toUpperCase().startsWith('SWD\\MMDEVAPI\\{0.0.1.');
 }
 
+function isPnPDeviceDisabled(device) {
+  const status = String(device?.status || '').toLowerCase();
+  return status.includes('disabled')
+    || status.includes('devre')
+    || status.includes('kapalı')
+    || status.includes('kapali');
+}
+
 async function getAudioCaptureDevices() {
   try {
     const output = await run('pnputil.exe', ['/enum-devices', '/class', 'AudioEndpoint']);
@@ -351,6 +444,10 @@ async function getAudioCaptureDevices() {
 
 function endpointGuidFromId(id) {
   return String(id || '').match(/\.\{([0-9a-f-]+)\}$/i)?.[1] || '';
+}
+
+function pnpEndpointId(device) {
+  return String(device?.instanceId || '').match(/MMDEVAPI\\(\{0\.0\.1\.[^}]+\}\.\{[0-9a-f-]+\})/i)?.[1] || '';
 }
 
 function endpointRegistryKey(id) {
@@ -381,11 +478,17 @@ async function getEndpointRegistryInfo(id) {
 }
 
 async function getAudioCaptureState() {
-  const [devices, muteState] = await Promise.all([
+  const [devices, muteState, endpoints] = await Promise.all([
     getAudioCaptureDevices(),
-    Promise.resolve().then(() => getCaptureMuteState()).catch(() => null)
+    Promise.resolve().then(() => getCaptureMuteState()).catch(() => null),
+    Promise.resolve().then(() => enumerateCaptureEndpoints()).catch(() => [])
   ]);
   const defaults = Promise.resolve().then(() => getDefaultCaptureEndpointIds()).catch(() => ({}));
+  const activeEndpointIds = new Set(
+    endpoints
+      .filter((endpoint) => endpoint.state === DEVICE_STATE_ACTIVE)
+      .map((endpoint) => endpoint.id.toLowerCase())
+  );
 
   if (!devices.length) {
     return {
@@ -399,7 +502,10 @@ async function getAudioCaptureState() {
   }
 
   const enabledDevices = devices.filter((device) => device.status === 'Started');
-  const disabledDevices = devices.filter((device) => device.status !== 'Started');
+  const disabledDevices = devices.filter((device) => (
+    isPnPDeviceDisabled(device)
+      && !activeEndpointIds.has(pnpEndpointId(device).toLowerCase())
+  ));
   const coreAudioEnabled = muteState?.available ? !muteState.allMuted : null;
   const isEnabled = coreAudioEnabled !== null ? coreAudioEnabled : enabledDevices.length > 0;
 
@@ -411,6 +517,7 @@ async function getAudioCaptureState() {
       : 'Girişler sessize alındı',
     devices,
     disabledDevices,
+    endpoints,
     muteState,
     defaults: await defaults,
     count: enabledDevices.length
@@ -443,55 +550,114 @@ async function getMicrophoneState() {
   };
 }
 
-async function setMicrophoneState(enabled) {
-  if (enabled) {
-    await setPrivacyState('microphone', true);
+function releaseMicrophoneMute() {
+  return setCaptureMuted(false);
+}
+
+function isVirtualCaptureEndpoint(name) {
+  const text = String(name || '').toLowerCase();
+  return [
+    'steam streaming',
+    'virtual audio',
+    'nvidia virtual',
+    'obs',
+    'voicemod',
+    'vb-audio',
+    'cable output',
+    'virtual cable'
+  ].some((part) => text.includes(part));
+}
+
+async function preferPhysicalCaptureEndpoint() {
+  const endpoints = enumerateCaptureEndpoints()
+    .filter((endpoint) => endpoint.state === DEVICE_STATE_ACTIVE);
+
+  if (!endpoints.length) {
+    return { ok: true, changed: false, reason: 'Aktif mikrofon yok.' };
   }
 
-  const capture = await getAudioCaptureState();
-  if (capture.enabled === null && !capture.devices.length) {
+  const enriched = await Promise.all(endpoints.map(async (endpoint) => ({
+    ...endpoint,
+    ...(await getEndpointRegistryInfo(endpoint.id))
+  })));
+  const currentDefaults = await Promise.resolve()
+    .then(() => getDefaultCaptureEndpointIds())
+    .catch(() => ({}));
+  const currentDefault = currentDefaults.communications || currentDefaults.multimedia || currentDefaults.console || '';
+  const preferred = enriched.find((endpoint) => !isVirtualCaptureEndpoint(endpoint.name));
+
+  if (!preferred || preferred.id === currentDefault) {
     return {
-      ok: false,
-      message: 'Mikrofon aygıtı bulunamadı.'
+      ok: true,
+      changed: false,
+      preferred: preferred?.name || '',
+      reason: preferred ? 'Varsayılan mikrofon zaten uygun.' : 'Aktif fiziksel mikrofon yok.'
     };
   }
 
+  try {
+    setDefaultCaptureEndpoint(preferred.id);
+    return {
+      ok: true,
+      changed: true,
+      preferred: preferred.name || preferred.id
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      changed: false,
+      message: error.message || 'Varsayılan mikrofon değiştirilemedi.'
+    };
+  }
+}
+
+async function repairMicrophoneAccess() {
+  await setPrivacyState('microphone', true);
+
+  const capture = await getAudioCaptureState();
   const muteResult = await Promise.resolve()
-    .then(() => setCaptureMuted(!enabled))
+    .then(() => releaseMicrophoneMute())
     .catch((error) => ({
       ok: false,
-      message: error.message || 'Mikrofon sessize alma durumu değiştirilemedi.'
+      message: error.message || 'Mikrofon sessizden çıkarılamadı.'
     }));
 
   if (!muteResult.ok) {
     return muteResult;
   }
 
-  if (enabled && capture.disabledDevices?.length) {
-    const repairResult = await setPnPDevicesEnabled(capture.disabledDevices, true);
-    return {
-      ...repairResult,
-      repairedDisabledEndpoints: true,
-      enabled: true
-    };
-  }
+  const disabledRepair = capture.disabledDevices?.length
+    ? await setPnPDevicesEnabled(capture.disabledDevices, true)
+    : null;
+  const preferredDefault = await preferPhysicalCaptureEndpoint();
 
   return {
-    ok: true,
+    ok: disabledRepair ? disabledRepair.ok : true,
     pending: false,
     elevated: false,
     count: muteResult.count,
-    enabled
+    enabled: true,
+    repairedDisabledEndpoints: Boolean(disabledRepair),
+    disabledRepair,
+    preferredDefault,
+    message: disabledRepair ? 'Mikrofon erişimi onarıldı.' : 'Mikrofon erişimi açık.'
+  };
+}
+
+async function setMicrophoneState(enabled) {
+  if (enabled) {
+    return repairMicrophoneAccess();
+  }
+
+  return {
+    ok: false,
+    enabled: true,
+    message: 'Mikrofon kapatma devre dışı; uygulama sistem sesini değiştirmiyor.'
   };
 }
 
 async function toggleMicrophoneState() {
-  const current = await getMicrophoneState();
-  return setMicrophoneState(!current.enabled);
-}
-
-function releaseMicrophoneMute() {
-  return setCaptureMuted(false);
+  return repairMicrophoneAccess();
 }
 
 async function getDarkModeState() {
@@ -701,11 +867,193 @@ async function getNetworkState() {
 }
 
 async function getNightLightState() {
+  try {
+    const state = parseNightLightState(await readRegistryBinary(NIGHT_LIGHT_STATE_KEY, 'Data'));
+    return {
+      enabled: state.enabled,
+      label: state.enabled ? 'Açık' : 'Kapalı',
+      detail: state.enabled ? 'Gece ışığı etkin' : 'Gece ışığı kapalı',
+      source: 'Windows CloudStore'
+    };
+  } catch {
+    return {
+      enabled: null,
+      label: 'Bilinmiyor',
+      detail: 'Gece ışığı durumu okunamadı',
+      source: 'Windows CloudStore'
+    };
+  }
+}
+
+function writeCompactFieldHeader(bytes, type, id) {
+  if (id <= 5) {
+    bytes.push(type | (id << 5));
+    return;
+  }
+
+  if (id <= 0xff) {
+    bytes.push(type | (0x06 << 5), id);
+    return;
+  }
+
+  bytes.push(type | (0x07 << 5), id & 0xff, (id >> 8) & 0xff);
+}
+
+function writeVarUInt(bytes, value) {
+  let current = BigInt(value);
+  while (current >= 0x80n) {
+    bytes.push(Number((current & 0x7fn) | 0x80n));
+    current >>= 7n;
+  }
+  bytes.push(Number(current));
+}
+
+function writeZigZag32(bytes, value) {
+  const parsed = Number.parseInt(value, 10) || 0;
+  writeVarUInt(bytes, BigInt((parsed << 1) ^ (parsed >> 31)) & 0xffffffffn);
+}
+
+function currentUnixSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function currentWindowsFileTime() {
+  return BigInt(Date.now()) * 10000n + 116444736000000000n;
+}
+
+function compactHeader() {
+  return [0x43, 0x42, 0x01, 0x00];
+}
+
+function buildNightLightStateBytes(enabled) {
+  const inner = compactHeader();
+  if (enabled) {
+    writeCompactFieldHeader(inner, 0x10, 0);
+    writeZigZag32(inner, 0);
+  }
+  writeCompactFieldHeader(inner, 0x10, 10);
+  writeZigZag32(inner, 1);
+  writeCompactFieldHeader(inner, 0x06, 20);
+  writeVarUInt(inner, currentWindowsFileTime());
+  inner.push(0x00);
+
+  const outer = compactHeader();
+  writeCompactFieldHeader(outer, 0x0a, 0);
+  writeCompactFieldHeader(outer, 0x02, 0);
+  outer.push(0x01, 0x00);
+  writeCompactFieldHeader(outer, 0x0a, 1);
+  writeCompactFieldHeader(outer, 0x06, 0);
+  writeVarUInt(outer, BigInt(currentUnixSeconds()));
+  writeCompactFieldHeader(outer, 0x0a, 1);
+  writeCompactFieldHeader(outer, 0x0b, 1);
+  outer.push(0x0e);
+  writeVarUInt(outer, BigInt(inner.length));
+  outer.push(...inner, 0x00, 0x00, 0x00);
+
+  return Buffer.from(outer);
+}
+
+function parseNightLightState(data) {
+  const buffer = Buffer.from(data || []);
+  const first = buffer.indexOf(Buffer.from(compactHeader()));
+  const second = first >= 0 ? buffer.indexOf(Buffer.from(compactHeader()), first + 4) : -1;
+  if (second < 0) {
+    throw new Error('Night Light state payload not found.');
+  }
+
   return {
-    enabled: null,
-    label: 'Hızlı',
-    detail: 'Hızlı panelden yönet'
+    enabled: buffer[second + 4] === 0x10
   };
+}
+
+async function setNightLightState(enabled) {
+  await writeRegistryBinary(NIGHT_LIGHT_STATE_KEY, 'Data', buildNightLightStateBytes(enabled));
+  broadcastSettingChange('Software\\Microsoft\\Windows\\CurrentVersion\\CloudStore');
+  return getNightLightState();
+}
+
+async function toggleNightLightState() {
+  const current = await getNightLightState();
+  return setNightLightState(current.enabled !== true);
+}
+
+async function getBrightnessState() {
+  try {
+    let output = '';
+    try {
+      output = await runPowerShell(
+        '(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1 -ExpandProperty CurrentBrightness)',
+        6000
+      );
+    } catch {
+      output = await run('wmic.exe', [
+        '/namespace:\\\\root\\wmi',
+        'path',
+        'WmiMonitorBrightness',
+        'get',
+        'CurrentBrightness',
+        '/value'
+      ], 5000);
+    }
+
+    const match = output.match(/(?:CurrentBrightness=)?\s*(\d+)/i);
+    const level = match ? Math.max(0, Math.min(100, Number.parseInt(match[1], 10))) : null;
+
+    if (level === null || Number.isNaN(level)) {
+      return {
+        available: false,
+        level: null,
+        message: 'Parlaklık bilgisi okunamadı.'
+      };
+    }
+
+    return {
+      available: true,
+      level,
+      source: 'Windows WMI',
+      message: `Parlaklık %${level}`
+    };
+  } catch {
+    const external = getExternalBrightnessState();
+    return external.available
+      ? external
+      : {
+        available: false,
+        level: null,
+        message: 'Bu ekran WMI veya DDC/CI parlaklık kontrolünü desteklemiyor.'
+      };
+  }
+}
+
+async function setBrightnessLevel(level) {
+  const nextLevel = Math.max(0, Math.min(100, Number.parseInt(level, 10) || 0));
+  try {
+    try {
+      await runPowerShell(
+        `$level = ${nextLevel}; $methods = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop; foreach ($method in $methods) { Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout = 1; Brightness = $level} | Out-Null }`,
+        10000
+      );
+    } catch {
+      await run('wmic.exe', [
+        '/namespace:\\\\root\\wmi',
+        'path',
+        'WmiMonitorBrightnessMethods',
+        'where',
+        'Active=TRUE',
+        'call',
+        'WmiSetBrightness',
+        '1',
+        String(nextLevel)
+      ], 8000);
+    }
+
+    return {
+      ok: true,
+      ...(await getBrightnessState())
+    };
+  } catch (error) {
+    return setExternalBrightnessLevel(nextLevel);
+  }
 }
 
 async function toggleBluetoothRadio() {
@@ -779,7 +1127,7 @@ async function toggleSilentState() {
 }
 
 async function getControlState() {
-  const [camera, microphone, bluetooth, silent, darkMode, batterySaver, network, nightLight] = await Promise.all([
+  const [camera, microphone, bluetooth, silent, darkMode, batterySaver, network, nightLight, brightness] = await Promise.all([
     getPrivacyState('camera'),
     getMicrophoneState(),
     getBluetoothState(),
@@ -787,7 +1135,8 @@ async function getControlState() {
     getDarkModeState(),
     getBatterySaverState(),
     getNetworkState(),
-    getNightLightState()
+    getNightLightState(),
+    getBrightnessState()
   ]);
 
   return {
@@ -798,17 +1147,26 @@ async function getControlState() {
     darkMode,
     batterySaver,
     network,
-    nightLight
+    nightLight,
+    brightness: {
+      enabled: brightness.available ? true : null,
+      label: brightness.available ? `%${brightness.level}` : 'Yok',
+      detail: brightness.message
+    }
   };
 }
 
 module.exports = {
+  getBrightnessState,
   getControlState,
   releaseMicrophoneMute,
+  repairMicrophoneAccess,
+  setBrightnessLevel,
   toggleBatterySaverState,
   toggleBluetoothRadio,
   toggleDarkModeState,
   toggleMicrophoneState,
+  toggleNightLightState,
   togglePrivacyState,
   toggleSilentState
 };

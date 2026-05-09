@@ -25,6 +25,9 @@
               <div id="timeFull" class="time-full">--:--:--</div>
               <div id="dateFull" class="date-full">Tarih yükleniyor</div>
             </div>
+            <div id="notificationTicker" class="notification-ticker" aria-live="polite" hidden>
+              <span id="notificationTickerText"></span>
+            </div>
             <button class="settings-button" data-open-settings title="Ayarlar" aria-label="Ayarlar">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -146,7 +149,7 @@
           </footer>
         </section>
 
-        <section id="toolPanel" class="tool-panel" aria-label="Hızlı araç" hidden>
+          <section id="toolPanel" class="tool-panel" aria-label="Hızlı araç" hidden>
           <header class="tool-header">
             <button class="back-button" data-close-tool title="Kontrol merkezine dön" aria-label="Kontrol merkezine dön">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -191,6 +194,45 @@
               <button class="primary-action" type="submit">Ara</button>
             </form>
           </section>
+
+          <section class="tool-view" data-tool-view="brightness" hidden>
+            <div class="slider-tool">
+              <div>
+                <strong>Parlaklık</strong>
+                <span id="brightnessValue">--%</span>
+              </div>
+              <input id="brightnessSlider" type="range" min="0" max="100" step="1" value="50" />
+              <p id="brightnessMessage">Ekran parlaklığı okunuyor.</p>
+            </div>
+          </section>
+
+          <section class="tool-view" data-tool-view="volumeMixer" hidden>
+            <div class="mixer-toolbar">
+              <div>
+                <strong>Ses mikseri</strong>
+                <span>Uygulama oturumları</span>
+              </div>
+              <button class="inline-action" data-refresh-audio-mixer>Yenile</button>
+            </div>
+            <div id="audioMixerList" class="audio-mixer-list"></div>
+          </section>
+
+          <section class="tool-view" data-tool-view="focusAssist" hidden>
+            <div class="focus-panel">
+              <div>
+                <strong id="focusState">Durum okunuyor</strong>
+                <span id="focusDetail">Windows bildirim anahtarı kontrol ediliyor.</span>
+              </div>
+              <div class="focus-actions">
+                <button class="primary-action" type="button" data-focus-toggle>Değiştir</button>
+                <button class="inline-action" type="button" data-focus-settings>Ayarlar</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="tool-view" data-tool-view="externalApps" hidden>
+            <div id="externalAppsList" class="external-apps-list"></div>
+          </section>
         </section>
 
         <section id="settingsPanel" class="settings-panel" aria-label="Uygulama ayarları" hidden>
@@ -199,8 +241,10 @@
             <button class="settings-nav is-current" data-settings-section="home">Giriş</button>
             <button class="settings-nav" data-settings-section="general">Genel</button>
             <button class="settings-nav" data-settings-section="quick">Hızlı menüler</button>
+            <button class="settings-nav" data-settings-section="external">Harici Uygulamalar</button>
             <button class="settings-nav" data-settings-section="privacy">Gizlilik</button>
             <button class="settings-nav" data-settings-section="system">Sistem</button>
+            <button class="settings-nav" data-settings-section="about">Hakkımda</button>
           </aside>
 
           <section class="settings-main">
@@ -215,7 +259,7 @@
             </header>
 
             <div class="settings-scroll">
-              <section class="settings-card settings-section" data-section-panel="home">
+              <section class="settings-card settings-section settings-hero-card" data-section-panel="home">
                 <div>
                   <h2>Windows Dynamic Notch</h2>
                   <p>Kontrol merkezi, gizlilik anahtarları, ekran görüntüsü ve oyun metrikleri tek yerden yönetilir.</p>
@@ -226,8 +270,7 @@
                 </div>
               </section>
 
-              <section class="settings-card settings-section" data-section-panel="general">
-                <h2>Genel</h2>
+              <section class="settings-section settings-plain-section" data-section-panel="general">
                 <div class="settings-list">
                   <div class="settings-row">
                     <div>
@@ -250,21 +293,154 @@
                     </div>
                     <button class="switch" data-setting-toggle="appearance.compactSeconds" aria-label="Saniyeli saat"></button>
                   </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Windows ile başlat</strong>
+                      <span>Oturum açıldığında çentiği otomatik başlat.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="system.startWithWindows" aria-label="Windows ile başlat"></button>
+                  </div>
                 </div>
               </section>
 
-              <section class="settings-card settings-section" data-section-panel="quick">
-                <h2>Hızlı menüler</h2>
-                <div id="featureSettingsList" class="settings-list"></div>
+              <section class="settings-card settings-section settings-control-card" data-section-panel="home">
+                <h2>Dil</h2>
+                <select id="languageSelect" class="settings-select" aria-label="Dil seç"></select>
               </section>
 
-              <section class="settings-card settings-section" data-section-panel="privacy">
-                <h2>Gizlilik</h2>
+              <section class="settings-card settings-section settings-control-card" data-section-panel="home">
+                <h2>Tema</h2>
+                <div class="theme-grid">
+                  <button class="theme-choice theme-default" data-setting-value="appearance.colorTheme" data-value="default">
+                    <span data-theme-preview="default"></span>
+                    <strong>Gece</strong>
+                  </button>
+                  <button class="theme-choice theme-slate" data-setting-value="appearance.colorTheme" data-value="slate">
+                    <span data-theme-preview="slate"></span>
+                    <strong>Grafit</strong>
+                  </button>
+                  <button class="theme-choice theme-contrast" data-setting-value="appearance.colorTheme" data-value="contrast">
+                    <span data-theme-preview="contrast"></span>
+                    <strong>Kontrast</strong>
+                  </button>
+                  <button class="theme-choice theme-light" data-setting-value="appearance.colorTheme" data-value="light">
+                    <span data-theme-preview="light"></span>
+                    <strong>Light</strong>
+                  </button>
+                  <button class="theme-choice theme-forest" data-setting-value="appearance.colorTheme" data-value="forest">
+                    <span data-theme-preview="forest"></span>
+                    <strong>Forest</strong>
+                  </button>
+                  <button class="theme-choice theme-ruby" data-setting-value="appearance.colorTheme" data-value="ruby">
+                    <span data-theme-preview="ruby"></span>
+                    <strong>Ruby</strong>
+                  </button>
+                  <button class="theme-choice theme-custom" data-open-custom-theme>
+                    <span data-theme-preview="custom"></span>
+                    <strong>Özelleştir</strong>
+                  </button>
+                </div>
+              </section>
+
+              <section class="settings-section settings-plain-section custom-theme-section" data-section-panel="theme-custom">
+                <div class="settings-subheader">
+                  <button class="back-button" data-settings-section="home" title="Girişe dön" aria-label="Girişe dön">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m15 18-6-6 6-6" />
+                    </svg>
+                  </button>
+                  <div>
+                    <strong>Özel tema</strong>
+                    <span>Renkleri değiştirirken menü önizlemesi aynı anda güncellenir.</span>
+                  </div>
+                </div>
+                <div id="customThemePreview" class="custom-theme-preview" aria-label="Özel tema önizlemesi">
+                  <div class="preview-menu-shell">
+                    <div class="preview-menu-top">
+                      <span>12:45</span>
+                      <span>CPU 24%</span>
+                    </div>
+                    <div class="preview-menu-grid">
+                      <span class="preview-menu-tile is-active">Odak</span>
+                      <span class="preview-menu-tile is-connected">Bluetooth</span>
+                      <span class="preview-menu-tile">Parlaklık</span>
+                      <span class="preview-menu-tile">Arama</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="custom-color-grid" aria-label="Özel tema renkleri">
+                  <label class="color-setting">
+                    <span data-color-preview="panel"></span>
+                    <strong>Ana panel</strong>
+                    <input type="color" data-custom-color="panel" />
+                  </label>
+                  <label class="color-setting">
+                    <span data-color-preview="surface"></span>
+                    <strong>Menü yüzeyi</strong>
+                    <input type="color" data-custom-color="surface" />
+                  </label>
+                  <label class="color-setting">
+                    <span data-color-preview="text"></span>
+                    <strong>Metin</strong>
+                    <input type="color" data-custom-color="text" />
+                  </label>
+                  <label class="color-setting">
+                    <span data-color-preview="active"></span>
+                    <strong>Aktif renk</strong>
+                    <input type="color" data-custom-color="active" />
+                  </label>
+                  <label class="color-setting">
+                    <span data-color-preview="connected"></span>
+                    <strong>Bağlı durum</strong>
+                    <input type="color" data-custom-color="connected" />
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-card settings-section settings-control-card" data-section-panel="home">
+                <h2>Görünüm</h2>
+                <div class="notch-preview-grid">
+                  <button class="notch-preview attached-preview" data-setting-value="appearance.notchStyle" data-value="attached">
+                    <span class="preview-screen">
+                      <span class="preview-notch"></span>
+                    </span>
+                    <strong>Ekrana bağlı</strong>
+                  </button>
+                  <button class="notch-preview floating-preview" data-setting-value="appearance.notchStyle" data-value="floating">
+                    <span class="preview-screen">
+                      <span class="preview-notch"></span>
+                    </span>
+                    <strong>Floating</strong>
+                  </button>
+                  <button class="notch-preview pill-preview" data-setting-value="appearance.notchStyle" data-value="pill">
+                    <span class="preview-screen">
+                      <span class="preview-notch"></span>
+                    </span>
+                    <strong>Pill</strong>
+                  </button>
+                  <button class="notch-preview compact-preview" data-setting-value="appearance.notchStyle" data-value="compact">
+                    <span class="preview-screen">
+                      <span class="preview-notch"></span>
+                    </span>
+                    <strong>Kompakt</strong>
+                  </button>
+                </div>
+              </section>
+
+              <section class="settings-section settings-plain-section" data-section-panel="quick">
+                <div id="featureSettingsList" class="settings-list feature-settings-list"></div>
+              </section>
+
+              <section class="settings-section settings-plain-section" data-section-panel="external">
+                <div id="externalAppsSettingsList" class="settings-list compact external-apps-list external-settings-list"></div>
+              </section>
+
+              <section class="settings-section settings-plain-section" data-section-panel="privacy">
                 <div class="settings-list compact">
                   <div class="settings-row">
                     <div>
                       <strong>Mikrofon kilidi</strong>
-                      <span>Windows kullanıcı gizlilik izinlerini Allow/Deny olarak değiştirir.</span>
+                      <span>Varsayılan giriş aygıtına müdahale etmeden güvenli mikrofon durumunu yönetir.</span>
                     </div>
                     <button data-action="microphone" class="inline-action">Değiştir</button>
                   </div>
@@ -278,9 +454,25 @@
                 </div>
               </section>
 
-              <section class="settings-card settings-section" data-section-panel="system">
-                <h2>Sistem</h2>
+              <section class="settings-section settings-plain-section" data-section-panel="system">
                 <div class="settings-list compact">
+                  <div class="settings-row">
+                    <div>
+                      <strong>Otomatik güncelleme kontrolü</strong>
+                      <span>GitHub sürümlerini arka planda belirli aralıklarla kontrol eder.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="updates.autoCheck" aria-label="Otomatik güncelleme kontrolü"></button>
+                  </div>
+                  <div class="settings-row update-row">
+                    <div>
+                      <strong>Güncelleme durumu</strong>
+                      <span id="updateStatus" data-status="idle">Henüz kontrol edilmedi.</span>
+                    </div>
+                    <div class="update-actions">
+                      <button class="inline-action" data-check-updates>Kontrol et</button>
+                      <button id="updateAction" class="inline-action" data-open-update hidden>Sürümü aç</button>
+                    </div>
+                  </div>
                   <div class="settings-row">
                     <div>
                       <strong>Bluetooth</strong>
@@ -294,6 +486,39 @@
                       <span>Çentik overlay uygulamasını kapatır.</span>
                     </div>
                     <button data-action="quit" class="inline-action danger">Çık</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="settings-section settings-plain-section" data-section-panel="about">
+                <div class="about-panel">
+                  <div class="about-icon" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" focusable="false">
+                      <rect x="10" y="16" width="44" height="32" rx="6"></rect>
+                      <path d="M16 16h32l4 12H12l4-12Z"></path>
+                      <path d="M20 17l7 11M33 17l7 11M46 17l7 11"></path>
+                      <path d="M18 36h28"></path>
+                      <path d="M18 42h18"></path>
+                    </svg>
+                  </div>
+                  <strong class="about-title">Windows Notch Overlay</strong>
+                  <span id="appVersion" class="about-version-pill">v0.1.0</span>
+                  <p class="about-copy">
+                    Windows hızlı kontrollerini, medya durumunu ve sistem araçlarını tek çentik panelinde toplayan masaüstü uygulamasıdır.
+                  </p>
+                  <div class="about-stats" role="list">
+                    <div class="about-stat" role="listitem">
+                      <strong>13+</strong>
+                      <span>Hızlı Menü</span>
+                    </div>
+                    <div class="about-stat" role="listitem">
+                      <strong id="appVersionStat">v0.1.0</strong>
+                      <span>Sürüm</span>
+                    </div>
+                    <div class="about-stat" role="listitem">
+                      <strong>Taxperia</strong>
+                      <span>Geliştirici</span>
+                    </div>
                   </div>
                 </div>
               </section>

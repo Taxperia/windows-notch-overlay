@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "name": "English",
+    "nativeName": "English"
+  },
+  "settings": {
+    "home": "Home",
+    "general": "General",
+    "quick": "Quick Menus",
+    "external": "External Apps",
+    "privacy": "Privacy",
+    "system": "System",
+    "about": "About"
+  },
+  "menu": {
+    "focus-assist": "Focus assist",
+    "bluetooth": "Bluetooth",
+    "microphone": "Microphone",
+    "camera": "Camera",
+    "screenshot-full": "Screenshot",
+    "volume-mixer": "Volume mixer",
+    "brightness": "Brightness",
+    "dark-mode": "Dark mode",
+    "night-light": "Night light",
+    "battery": "Battery saver",
+    "network": "Network",
+    "alarms": "Alarm",
+    "search": "Search",
+    "external-apps": "External Apps"
+  },
+  "featureHelp": {
+    "focus-assist": "Toggles focus assist state.",
+    "bluetooth": "Toggles the Bluetooth radio adapter only.",
+    "microphone": "Shows microphone state; click only repairs access.",
+    "camera": "Changes the camera privacy permission.",
+    "screenshot-full": "Saves a full-screen screenshot to Pictures.",
+    "volume-mixer": "Opens the in-app per-application volume mixer.",
+    "brightness": "Opens the notch brightness slider.",
+    "dark-mode": "Switches Windows light/dark theme state.",
+    "night-light": "Toggles Night light without opening Quick Settings.",
+    "battery": "Manages battery saver or a power saver plan.",
+    "network": "Opens the Windows network quick panel.",
+    "alarms": "Creates alarms inside the notch.",
+    "search": "Opens the in-notch search box.",
+    "external-apps": "Opens built-in external services from the notch."
+  },
+  "tools": {
+    "brightness": "Brightness",
+    "externalApps": "External Apps",
+    "externalSubtitle": "Built-in services and quick targets"
+  }
+}

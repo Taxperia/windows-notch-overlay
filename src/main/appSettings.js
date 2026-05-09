@@ -7,7 +7,39 @@ const DEFAULT_SETTINGS = Object.freeze({
   appearance: {
     showStatus: true,
     showMedia: true,
-    compactSeconds: true
+    compactSeconds: true,
+    language: 'tr',
+    colorTheme: 'default',
+    customTheme: {
+      panel: '#0a0c10',
+      surface: '#171b22',
+      text: '#f4f7fb',
+      active: '#0f766e',
+      connected: '#2563eb'
+    },
+    notchStyle: 'attached',
+    menuOrder: [
+      'focus-assist',
+      'bluetooth',
+      'microphone',
+      'camera',
+      'screenshot-full',
+      'volume-mixer',
+      'brightness',
+      'dark-mode',
+      'night-light',
+      'battery',
+      'network',
+      'alarms',
+      'search'
+    ]
+  },
+  system: {
+    startWithWindows: false,
+    softwareBrightnessLevel: 100
+  },
+  updates: {
+    autoCheck: false
   },
   features: {
     'focus-assist': true,
@@ -15,6 +47,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     microphone: true,
     camera: true,
     'screenshot-full': true,
+    'volume-mixer': true,
+    brightness: true,
     'dark-mode': true,
     'night-light': true,
     battery: true,
@@ -44,6 +78,21 @@ function mergeSettings(base, override) {
   merged.appearance = {
     ...merged.appearance,
     ...(override.appearance && typeof override.appearance === 'object' ? override.appearance : {})
+  };
+
+  merged.appearance.customTheme = {
+    ...base.appearance.customTheme,
+    ...(override.appearance?.customTheme && typeof override.appearance.customTheme === 'object' ? override.appearance.customTheme : {})
+  };
+
+  merged.system = {
+    ...merged.system,
+    ...(override.system && typeof override.system === 'object' ? override.system : {})
+  };
+
+  merged.updates = {
+    ...merged.updates,
+    ...(override.updates && typeof override.updates === 'object' ? override.updates : {})
   };
 
   merged.features = {

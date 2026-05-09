@@ -1,14 +1,16 @@
 {
   "name": "windows-notch-overlay",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Electron-based dynamic notch overlay for Windows with quick controls, telemetry, alarms, search, and media state.",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
     "build:media-helper": "dotnet publish src/helpers/media-session/MediaSessionHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/media-session/publish",
-    "build:win": "npm run build:media-helper && electron-builder --win portable",
-    "dist": "npm run build:media-helper && electron-builder --win nsis"
+    "build:notification-helper": "dotnet publish src/helpers/notifications/NotificationHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/notifications/publish",
+    "build:helpers": "npm run build:media-helper && npm run build:notification-helper",
+    "build:win": "npm run build:helpers && electron-builder --win portable",
+    "dist": "npm run build:helpers && electron-builder --win nsis"
   },
   "keywords": [
     "electron",
@@ -40,10 +42,13 @@
       "src/**/*",
       "!src/helpers/media-session/bin/**",
       "!src/helpers/media-session/obj/**",
+      "!src/helpers/notifications/bin/**",
+      "!src/helpers/notifications/obj/**",
       "package.json"
     ],
     "asarUnpack": [
-      "src/helpers/media-session/publish/**"
+      "src/helpers/media-session/publish/**",
+      "src/helpers/notifications/publish/**"
     ],
     "win": {
       "target": [
