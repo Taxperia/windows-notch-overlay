@@ -1,38 +1,39 @@
 # Changelog
 
-Bu dosya, GitHub'daki son uygulama sürümü olan `v0.1.1` sonrasında yapılan kullanıcıya dönük değişiklikleri özetler.
+This file summarizes notable user-facing changes made after the previous GitHub release.
 
 ## 0.2.0 - 2026-07-30
 
-### Eklendi
+### Added
 
-- Çentik içine Pomodoro, kısa notlar, RAM temizleyici, bildirim merkezi, takvim, hava durumu ve pil detayı araçları eklendi.
-- URL, boyut ve açma/kapatma kısayolları ayarlanabilen ekran içi video oynatma alanı eklendi.
-- Ana saat alanında saat/tarih veya Pomodoro gösterme; indirme-yükleme hızı, ping ve kulaklık pili bilgilerini kapalı çentikte gösterme seçenekleri eklendi.
-- Ayarların çentik içinde veya ayrı pencerede açılması, ayar araması ve kompakt/gelişmiş ayar modu eklendi.
-- Mikrofon ve kamera aygıtı seçimi ile cihaz listesini yenileme desteği eklendi.
-- Köşeli ve Blok çentik görünümleri, Floating alt görünümleri, saydam üst şerit ve canlı önizlemeli özel tema düzenleyicisi eklendi.
-- Medya kaynağı için Spotify öncelikli, aktif Windows oturumu veya herhangi bir oturum seçimi ve üç farklı alarm sesi eklendi.
+- Added in-notch Pomodoro, short notes, RAM cleaner, notification center, calendar, weather, and battery detail tools.
+- Added an inline video stage with configurable URL, dimensions, and open/close keyboard shortcuts.
+- Added collapsed-notch content options for clock/date or Pomodoro, download/upload speed, ping, and best-effort headphone battery information.
+- Added the option to open Settings inside the notch or in a separate window, plus settings search and compact/advanced settings modes.
+- Added microphone and camera device selection with device-list refresh support.
+- Added Angular and Slab notch styles, Floating variants, a transparent compact strip, and a custom theme editor with live preview.
+- Added Spotify-first, active Windows session, or any-session media-source selection and three alarm sound profiles.
 
-### Değiştirildi
+### Changed
 
-- Windows medya yardımcısı seçilen medya oturumunu doğrudan kontrol edecek şekilde geliştirildi; gerektiğinde genel medya tuşlarına geri dönüyor.
-- Bluetooth denetimi Windows Radio API'yi, parlaklık denetimi ise doğrulanmış WMI ve DDC/CI yollarını önceliklendirecek şekilde daha güvenilir hale getirildi.
-- Parlaklık gösterimi `50%` biçimine getirildi; donanımsal olarak yazılamayan ekranlar daha doğru raporlanıyor.
-- Ayar uygulama ve menü çizim akışı gereksiz tekrarları azaltacak şekilde optimize edildi; medya ve kontrol sorgu aralıkları seyrekleştirildi.
-- Ses mikseri yenileme eylemi araç başlığına taşındı, Hakkında ekranı ve genel ayar arayüzü yenilendi.
+- Improved the Windows media helper so it controls the selected media session directly and falls back to global media keys when necessary.
+- Made Bluetooth control more reliable by prioritizing the Windows Radio API and retaining a carefully filtered PnP fallback.
+- Made brightness control more reliable by validating WMI writes and falling back to DDC/CI for supported external monitors.
+- Standardized brightness values to the <code>50%</code> format and improved reporting for displays that expose read-only brightness values.
+- Reduced unnecessary settings application and menu rendering work, and relaxed media/control polling intervals.
+- Moved the audio-mixer refresh action into the tool header and redesigned the About page and settings interface.
 
-### Düzeltildi
+### Fixed
 
-- Preload saat geri dönüşünün Pomodoro ile saat/tarih arasında oluşturduğu görüntü geçişi kaldırıldı.
-- Ağ hızı ilk örneğinde oluşabilen boş örnek hatası giderildi; indirme ve yükleme değerleri ayrı ve doğru birimlerle gösteriliyor.
-- Ekran içi videonun ayrı ayar penceresinde açılması engellendi; video her zaman ana çentikte gösteriliyor.
-- Ek içerikler etkinleştirildiğinde kapalı çentiğin genişliği ve saat/tarih yerleşimi daha kararlı hale getirildi.
-- Electron Builder ve ilişkili dolaylı bağımlılıklar güvenli sürümlere yükseltilerek Dependabot güvenlik uyarıları giderildi.
-- GitHub CodeQL default setup ile çakışan yinelenen Advanced iş akışı kaldırıldı; güvenlik taraması tek yapılandırmadan çalışacak şekilde düzeltildi.
-- JavaScript sözdizimi, JSON geçerliliği ve package/lock sürüm tutarlılığı için GitHub Actions kaynak kontrolü eklendi.
+- Removed the preload clock fallback that caused visible switching between the clock and an active Pomodoro timer.
+- Fixed the initial network-speed sample and now display download/upload values separately with correct units.
+- Ensured inline video always opens in the main notch instead of a detached Settings window.
+- Stabilized collapsed-notch sizing and clock/date placement when optional content indicators are enabled.
+- Updated Electron Builder and related transitive dependencies to secure versions, resolving the active Dependabot alerts.
+- Removed the duplicate Advanced CodeQL workflow that conflicted with GitHub's default CodeQL setup.
+- Added GitHub Actions source checks for JavaScript syntax, JSON validity, and package/lockfile version consistency.
 
-### Deneysel / Devre Dışı
+### Experimental / Disabled
 
-- GitHub bildirimleri için token doğrulama, güvenli saklama ve bildirim sağlayıcı altyapısı hazırlandı; harici uygulama arayüzü ve arka plan sorguları bu sürümde özellik bayraklarıyla kapalıdır.
-- Kulaklık pil değeri Windows ve donanım desteğine bağlı olarak en iyi çabayla okunur; desteklenmeyen cihazlarda değer gösterilmeyebilir.
+- GitHub notification token validation, secure storage, and provider infrastructure are present, but the external-app UI and background polling remain disabled behind feature flags.
+- Headphone battery reporting depends on Windows and device support and may remain unavailable on unsupported hardware.

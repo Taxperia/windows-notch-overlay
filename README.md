@@ -1,104 +1,320 @@
+<a id="readme-top"></a>
+
+<div align="center">
+
 # Windows Notch Overlay
 
-Windows Notch Overlay is an Electron-based dynamic notch prototype for Windows. It stays as a compact top-center overlay and expands on hover into a control center with quick actions, system telemetry, alarms, search, and media controls.
+**A compact, customizable notch-style control center for Windows 10 and 11.**
 
-## Features
+Keep system controls, media, productivity tools, notifications, and live telemetry one hover away without leaving your current task.
 
-- Transparent, frameless, always-on-top Electron overlay
-- Attached and floating notch themes
-- Smooth hover expansion into a compact control center
-- Data-driven quick action tiles with pagination
-- Long-press quick action tiles to reorder them across pages
-- In-app settings panel for language, themes, custom colors, notch appearance, startup, quick actions, privacy, and system options
-- Sound mixer, brightness, and built-in external service launcher quick actions
-- Date and time display in collapsed and expanded states
-- Notification ticker that hides the expanded clock and scrolls new Windows notification text from right to left
-- Spotify-aware media view with cover art, timeline, play/pause, previous, and next controls
-- Media view only opens automatically while Spotify is actively playing
-- Alarm creation inside the notch with active alarm takeover view
-- Web search inside the notch, opened through the default browser
-- Full-screen screenshot capture to `Pictures/NotchOverlayScreenshots`
-- CPU, RAM, NVIDIA GPU, active window, and known game process detection
-- Windows privacy/status integrations for camera and microphone state
-- Bluetooth, focus assist, dark mode, night light, battery saver, and network quick actions
-- PowerShell-free Windows integrations through Node, Electron, Win32, Core Audio, and SMTC helper code
+[![Latest Release][release-shield]][release-url]
+[![Downloads][downloads-shield]][release-url]
+[![Source Checks][checks-shield]][checks-url]
+[![License][license-shield]][license-url]
+[![Windows][windows-shield]][release-url]
 
-## Installation
+[**Download the latest release »**][release-url]
 
-Requirements:
+[View releases][releases-url] · [Report a bug][bug-url] · [Request a feature][feature-url]
 
-- Windows 10/11
-- Node.js 20 or newer recommended
+</div>
+
+> [!IMPORTANT]
+> Windows Notch Overlay is currently Windows-only. Release binaries are not signed with a commercial code-signing certificate, so Windows may display a SmartScreen warning. Download builds only from this repository's official [Releases page][releases-url].
+
+<details>
+  <summary><strong>Table of Contents</strong></summary>
+  <ol>
+    <li><a href="#about-the-project">About the Project</a></li>
+    <li><a href="#highlights">Highlights</a></li>
+    <li><a href="#built-with">Built With</a></li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#download-the-portable-app">Download the Portable App</a></li>
+        <li><a href="#run-from-source">Run from Source</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#windows-integrations">Windows Integrations</a></li>
+    <li><a href="#project-structure">Project Structure</a></li>
+    <li><a href="#build">Build</a></li>
+    <li><a href="#current-limitations">Current Limitations</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#security">Security</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+    <li><a href="#license">License</a></li>
+  </ol>
+</details>
+
+## About the Project
+
+Windows Notch Overlay is an Electron-based desktop overlay that sits at the top center of the screen. It stays compact while you work, then expands into a focused control center when you hover over it.
+
+The project combines familiar Windows controls with media, productivity, notification, and telemetry tools in one consistent interface. It is designed to reduce context switching while remaining customizable enough for different workflows and display setups.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Highlights
+
+| Area | What it includes |
+| --- | --- |
+| **Quick controls** | Volume mixer, brightness, Bluetooth, Focus Assist, dark mode, Night light, battery saver, network, camera, and microphone status |
+| **Productivity** | Pomodoro timer, short notes, alarms, calendar, weather, search, notification center, and RAM cleaner |
+| **Media** | Windows SMTC media sessions, Spotify-aware presentation, cover art, timeline, playback controls, and selectable media-source priority |
+| **Inline video** | Configurable web/video URL, resizable in-notch stage, and customizable open/close hotkeys |
+| **Customization** | Attached, Floating, Pill, Compact, Angular, and Slab styles; theme presets; custom colors; transparent compact strip |
+| **Collapsed content** | Clock/date or Pomodoro plus optional download/upload speed, ping, and best-effort headphone battery information |
+| **Telemetry** | CPU, RAM, NVIDIA GPU, active-window, known-game, network, and power information where supported |
+| **Settings** | In-notch or separate settings window, compact/advanced modes, settings search, microphone/camera selection, and persistent menu ordering |
+
+### Designed for the desktop
+
+- Frameless, transparent, always-on-top overlay
+- Smooth compact-to-expanded transitions
+- Drag-and-drop quick action ordering across menu pages
+- Turkish and English localization dictionaries
+- Conservative Windows privacy controls that avoid disrupting active apps
+- Native Windows helper processes for media sessions and notifications
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Built With
+
+[![Electron][electron-shield]][electron-url]
+[![Node.js][node-shield]][node-url]
+[![.NET][dotnet-shield]][dotnet-url]
+[![Koffi][koffi-shield]][koffi-url]
+
+- **Electron** provides the desktop window, lifecycle, IPC, and packaging layers.
+- **Node.js** handles application logic and system data collection.
+- **Koffi** connects the app to Win32, Core Audio, and DDC/CI APIs.
+- **.NET 8 / WinRT helpers** provide Windows media-session and notification access.
+- **HTML, CSS, and vanilla JavaScript** power the renderer interface.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Getting Started
+
+### Download the Portable App
+
+1. Open the [latest release][release-url].
+2. Download <code>Windows.Notch.Overlay.0.2.0.exe</code>.
+3. Run the portable executable; no installer is required.
+
+Current release: [**Download Windows Notch Overlay v0.2.0**][download-url]
+
+Some helper-powered features may require the [.NET 8 Desktop Runtime][dotnet-runtime-url] on the target computer.
+
+### Run from Source
+
+#### Prerequisites
+
+- Windows 10 or Windows 11
+- Node.js 20 or newer
 - npm
-- .NET 8 SDK if you want to rebuild the Windows Media Session helper
+- .NET 8 SDK
+- Git
 
-Install dependencies:
+#### Installation
 
-```bash
-npm install
-```
+1. Clone the repository:
 
-Run the app:
+   ~~~powershell
+   git clone https://github.com/Taxperia/windows-notch-overlay.git
+   cd windows-notch-overlay
+   ~~~
 
-```bash
-npm start
-```
+2. Install the locked dependencies:
 
-The notch design can be switched from the in-app Settings > Appearance panel. The default design attaches to the top edge, while the floating design keeps a bordered notch slightly below the screen edge.
+   ~~~powershell
+   npm ci
+   ~~~
 
-Build a portable Windows release:
+3. Start the application:
 
-```bash
+   ~~~powershell
+   npm start
+   ~~~
+
+4. Start with DevTools when developing:
+
+   ~~~powershell
+   npm run dev
+   ~~~
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Usage
+
+### Everyday controls
+
+- Hover over the compact notch to open the main control center.
+- Select a quick-action tile to open its tool or change the related Windows state.
+- Long-press and drag tiles to reorder them across menu pages.
+- Use the media view to control the selected Windows media session.
+- Open Settings to change appearance, content, privacy, devices, and startup behavior.
+
+### Productivity tools
+
+- Start a Pomodoro session and optionally replace the collapsed clock with its countdown.
+- Save short local notes directly inside the notch.
+- Create alarms with selectable alert tones.
+- View recent Windows notifications, a monthly calendar, or weather for a chosen city.
+
+### Inline video
+
+Enable **Screen video** in Settings, enter a web or video URL, and choose the stage size. The default shortcuts are <kbd>Page Up</kbd> to show and <kbd>Page Down</kbd> to hide the video stage.
+
+### Local data
+
+- Settings are stored in Electron's <code>userData/settings.json</code>.
+- Notes and Pomodoro state are stored locally by the renderer.
+- Screenshots are saved to <code>Pictures/NotchOverlayScreenshots</code>.
+- GitHub integration tokens, when the experimental integration is enabled, use Electron <code>safeStorage</code> where available.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Windows Integrations
+
+| Capability | Primary path | Fallback or behavior |
+| --- | --- | --- |
+| Media metadata and commands | Windows SMTC helper | Global media keys and Spotify window-title fallback |
+| Notifications | WinRT notification helper | Feature remains unavailable until notification access is granted |
+| Internal display brightness | Windows WMI | Read-only state is reported when hardware writes are unsupported |
+| External monitor brightness | DDC/CI through Koffi | Availability depends on the monitor and display connection |
+| Bluetooth | Windows Radio API | Carefully filtered Bluetooth PnP devices on unsupported systems |
+| Per-app audio | Windows Core Audio sessions | Unsupported/protected sessions are skipped |
+| NVIDIA telemetry | <code>nvidia-smi.exe</code> | Hidden when a compatible NVIDIA GPU is unavailable |
+| Network extras | Windows counters and <code>ping.exe</code> | Best-effort values with safe empty states |
+
+The application avoids disabling microphone devices or changing Windows microphone privacy to <code>Deny</code> during normal use.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Project Structure
+
+~~~text
+windows-notch-overlay/
+├── .github/
+│   ├── ISSUE_TEMPLATE/
+│   └── workflows/
+├── src/
+│   ├── helpers/
+│   │   ├── media-session/
+│   │   └── notifications/
+│   ├── main/
+│   │   ├── index.js
+│   │   ├── appSettings.js
+│   │   ├── windowsControls.js
+│   │   ├── media.js
+│   │   └── ramCleaner.js
+│   ├── renderer/
+│   │   ├── i18n/
+│   │   ├── index.html
+│   │   ├── renderer.js
+│   │   └── styles.css
+│   └── preload.js
+├── CHANGELOG.md
+├── package.json
+└── README.md
+~~~
+
+The main Electron process lives in <code>src/main/</code>, the isolated preload bridge is <code>src/preload.js</code>, and the UI is implemented in <code>src/renderer/</code>.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Build
+
+Build the .NET helpers and a portable Windows executable:
+
+~~~powershell
 npm run build:win
-```
+~~~
 
-The build script compiles the Windows Media Session helper first, then writes the portable app to `dist/`.
+Build the .NET helpers and an NSIS installer:
 
-## Project Notes
+~~~powershell
+npm run dist
+~~~
 
-This project is Windows-specific. Some data, such as FPS and hardware temperature, is not available through standard Electron APIs, so the project uses Windows-native integrations where practical.
+Generated output is written to <code>dist/</code>. Helper build output under each helper's <code>bin/</code>, <code>obj/</code>, and <code>publish/</code> directories is intentionally ignored by Git.
 
-- CPU and RAM metrics use Node APIs.
-- Active window and media key control use Win32 APIs through `koffi`.
-- NVIDIA GPU usage and temperature use `nvidia-smi.exe` when available.
-- Media metadata is read through a Windows Media Session / SMTC helper first, with Spotify window-title fallback only when needed.
-- Windows toast notifications are read through a small WinRT helper after notification access is granted.
-- Camera and microphone status are read from Windows privacy and audio state where possible.
-- Microphone toggling is conservative and avoids breaking active streams in apps such as Discord or games.
-- Bluetooth adapter toggling uses `pnputil`, but only targets devices from the Bluetooth class whose description explicitly identifies a Bluetooth radio or adapter.
-- Brightness control uses the Windows WMI monitor brightness provider when the active display exposes it.
-- Language dictionaries are loaded from `src/renderer/i18n/*.json`, so additional languages can be added without changing the settings UI.
-- External service entries are code-defined integrations, such as YouTube, YouTube Music, Discord, and GitHub, and are launched through Electron shell APIs.
-- Network and night light actions avoid opening full Settings pages when a quicker Windows surface is available.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Attribution
+## Current Limitations
 
-Windows Notch Overlay was inspired by the idea behind [DynamicWin](https://github.com/FlorianButz/DynamicWin), a Windows dynamic-island style project by Florian Butz.
+- Hardware controls depend on Windows, driver, display, and device support.
+- Headphone battery information is best-effort and may not be exposed by every device.
+- GitHub notification integration groundwork exists but external integrations and background polling are disabled in the current release.
+- Discord message/call content cannot be read through a regular user OAuth flow, and YouTube integration requires a configured Google OAuth/Data API application.
+- Portable release binaries are currently unsigned.
 
-This repository is an independent implementation with a different stack, design direction, architecture, and feature set. It is not affiliated with, endorsed by, or derived from the DynamicWin codebase. The concept inspiration is acknowledged explicitly because DynamicWin helped show that a dynamic notch experience can make sense on Windows.
+See the [issue tracker][issues-url] for known problems and planned improvements.
 
-DynamicWin is licensed under Creative Commons Attribution-ShareAlike 4.0 International. A local copy of that license text is kept in [DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md](DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md) for reference, and additional attribution notes are kept in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Development
-
-The main Electron process lives in `src/main/`, the preload bridge is `src/preload.js`, and the renderer UI is in `src/renderer/`.
-
-Quick menu items are generated from `MENU_ITEMS` in `src/renderer/renderer.js`. Add a new item there to make it appear in the carousel automatically. User-defined ordering is stored in `appearance.menuOrder`.
-
-Persistent user settings are stored in Electron `userData/settings.json`.
-
-The Windows Media Session helper source is in `src/helpers/media-session/`. The Windows notification helper source is in `src/helpers/notifications/`. Build output is generated under each helper's `publish/` folder and is intentionally not committed.
-
-## Security
-
-This app interacts with Windows privacy, audio, shell, screenshot, and process APIs. Review [SECURITY.md](SECURITY.md) before reporting a vulnerability.
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and the GitHub issue templates before opening a pull request.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening a pull request.
+
+1. Fork the repository.
+2. Create a feature branch: <code>git switch -c feature/amazing-feature</code>
+3. Commit your changes.
+4. Push the branch.
+5. Open a pull request.
+
+For a full list of changes, see [CHANGELOG.md](CHANGELOG.md).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Security
+
+Windows Notch Overlay interacts with Windows privacy, audio, process, screenshot, shell, and device APIs. Review [SECURITY.md](SECURITY.md) before reporting a vulnerability.
+
+Please use the private reporting instructions in the security policy instead of creating a public issue for sensitive findings.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Acknowledgments
+
+Windows Notch Overlay was inspired by the dynamic-island concept demonstrated by [DynamicWin](https://github.com/FlorianButz/DynamicWin), created by Florian Butz.
+
+This repository is an independent implementation with a different technology stack, architecture, design direction, and feature set. It is not affiliated with or endorsed by DynamicWin. Additional attribution information is available in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md](DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md).
+
+The README layout takes structural inspiration from [Taxperia/Best-README-Template](https://github.com/Taxperia/Best-README-Template), a fork of the original Best-README-Template project.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
 
-Project code is licensed under the Apache License 2.0 unless a file states otherwise. See [LICENSE](LICENSE).
+Project code is distributed under the Apache License 2.0 unless a file states otherwise. See [LICENSE](LICENSE) for details.
 
-DynamicWin and any DynamicWin-owned material remain under their own license and ownership.
+DynamicWin and any DynamicWin-owned material remain under their respective license and ownership.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- Reference links -->
+[release-shield]: https://img.shields.io/github/v/release/Taxperia/windows-notch-overlay?style=for-the-badge&sort=semver
+[release-url]: https://github.com/Taxperia/windows-notch-overlay/releases/latest
+[releases-url]: https://github.com/Taxperia/windows-notch-overlay/releases
+[download-url]: https://github.com/Taxperia/windows-notch-overlay/releases/download/v0.2.0/Windows.Notch.Overlay.0.2.0.exe
+[downloads-shield]: https://img.shields.io/github/downloads/Taxperia/windows-notch-overlay/total?style=for-the-badge
+[checks-shield]: https://img.shields.io/github/actions/workflow/status/Taxperia/windows-notch-overlay/source-checks.yml?branch=main&style=for-the-badge&label=Source%20Checks
+[checks-url]: https://github.com/Taxperia/windows-notch-overlay/actions/workflows/source-checks.yml
+[license-shield]: https://img.shields.io/github/license/Taxperia/windows-notch-overlay?style=for-the-badge
+[license-url]: https://github.com/Taxperia/windows-notch-overlay/blob/main/LICENSE
+[windows-shield]: https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge&logo=windows11&logoColor=white
+[issues-url]: https://github.com/Taxperia/windows-notch-overlay/issues
+[bug-url]: https://github.com/Taxperia/windows-notch-overlay/issues/new?template=bug_report.yml
+[feature-url]: https://github.com/Taxperia/windows-notch-overlay/issues/new?template=feature_request.yml
+[electron-shield]: https://img.shields.io/badge/Electron-42-47848F?style=for-the-badge&logo=electron&logoColor=white
+[electron-url]: https://www.electronjs.org/
+[node-shield]: https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white
+[node-url]: https://nodejs.org/
+[dotnet-shield]: https://img.shields.io/badge/.NET-8-512BD4?style=for-the-badge&logo=dotnet&logoColor=white
+[dotnet-url]: https://dotnet.microsoft.com/
+[dotnet-runtime-url]: https://dotnet.microsoft.com/download/dotnet/8.0
+[koffi-shield]: https://img.shields.io/badge/Koffi-Native%20FFI-111111?style=for-the-badge
+[koffi-url]: https://koffi.dev/
