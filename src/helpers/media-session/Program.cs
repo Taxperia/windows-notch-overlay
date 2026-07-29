@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -27,15 +28,15 @@ internal static class Program
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    private static async Task<int> Main()
+    private static async Task<int> Main(string[] args)
     {
         try
         {
             var manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             var sessions = manager.GetSessions();
-            var session = sessions.FirstOrDefault(IsSpotify)
-                ?? manager.GetCurrentSession()
-                ?? sessions.FirstOrDefault();
+            var source = SourcePreference(args);
+            var command = CommandArg(args);
+            var session = SelectSession(manager, sessions, source);
 
             if (session is null)
             {
@@ -43,26 +44,13 @@ internal static class Program
                 return 0;
             }
 
-            var properties = await session.TryGetMediaPropertiesAsync();
-            var timeline = session.GetTimelineProperties();
-            var playback = session.GetPlaybackInfo();
-            var status = playback.PlaybackStatus.ToString().ToLowerInvariant();
-            var durationMs = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalMilliseconds);
-            var positionMs = Math.Max(0, timeline.Position.TotalMilliseconds);
-            var thumbnailDataUrl = await ReadThumbnailDataUrl(properties.Thumbnail);
+            if (!string.IsNullOrWhiteSpace(command))
+            {
+                await ExecuteCommand(session, command);
+                await Task.Delay(160);
+            }
 
-            Write(new MediaPayload(
-                true,
-                AppName(session.SourceAppUserModelId),
-                session.SourceAppUserModelId,
-                properties.Title ?? string.Empty,
-                properties.Artist ?? string.Empty,
-                properties.AlbumTitle ?? string.Empty,
-                status,
-                durationMs,
-                positionMs,
-                thumbnailDataUrl
-            ));
+            await WriteSession(session);
             return 0;
         }
         catch (Exception error)
@@ -71,6 +59,89 @@ internal static class Program
             Write(new MediaPayload(false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, "unavailable", 0, 0, null));
             return 0;
         }
+    }
+
+    private static string SourcePreference(string[] args)
+    {
+        var sourceArg = args.FirstOrDefault(arg => arg.StartsWith("--source=", StringComparison.OrdinalIgnoreCase));
+        return sourceArg?.Split('=', 2).LastOrDefault()?.ToLowerInvariant() ?? "spotify";
+    }
+
+    private static string? CommandArg(string[] args)
+    {
+        var commandArg = args.FirstOrDefault(arg => arg.StartsWith("--command=", StringComparison.OrdinalIgnoreCase));
+        return commandArg?.Split('=', 2).LastOrDefault();
+    }
+
+    private static GlobalSystemMediaTransportControlsSession? SelectSession(
+        GlobalSystemMediaTransportControlsSessionManager manager,
+        IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions,
+        string source
+    )
+    {
+        return source switch
+        {
+            "active" => manager.GetCurrentSession() ?? sessions.FirstOrDefault(IsSpotify) ?? sessions.FirstOrDefault(),
+            "any" => manager.GetCurrentSession() ?? sessions.FirstOrDefault(),
+            _ => sessions.FirstOrDefault(IsSpotify) ?? manager.GetCurrentSession() ?? sessions.FirstOrDefault()
+        };
+    }
+
+    private static async Task ExecuteCommand(GlobalSystemMediaTransportControlsSession session, string command)
+    {
+        var normalized = command.Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "previous":
+                await session.TrySkipPreviousAsync();
+                return;
+            case "next":
+                await session.TrySkipNextAsync();
+                return;
+            case "play":
+                await session.TryPlayAsync();
+                return;
+            case "pause":
+                await session.TryPauseAsync();
+                return;
+            case "playpause":
+            case "play-pause":
+            case "toggle":
+                if (session.GetPlaybackInfo().PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                {
+                    await session.TryPauseAsync();
+                    return;
+                }
+
+                await session.TryPlayAsync();
+                return;
+            default:
+                throw new InvalidOperationException($"Unsupported media command: {command}");
+        }
+    }
+
+    private static async Task WriteSession(GlobalSystemMediaTransportControlsSession session)
+    {
+        var properties = await session.TryGetMediaPropertiesAsync();
+        var timeline = session.GetTimelineProperties();
+        var playback = session.GetPlaybackInfo();
+        var status = playback.PlaybackStatus.ToString().ToLowerInvariant();
+        var durationMs = Math.Max(0, (timeline.EndTime - timeline.StartTime).TotalMilliseconds);
+        var positionMs = Math.Max(0, timeline.Position.TotalMilliseconds);
+        var thumbnailDataUrl = await ReadThumbnailDataUrl(properties.Thumbnail);
+
+        Write(new MediaPayload(
+            true,
+            AppName(session.SourceAppUserModelId),
+            session.SourceAppUserModelId,
+            properties.Title ?? string.Empty,
+            properties.Artist ?? string.Empty,
+            properties.AlbumTitle ?? string.Empty,
+            status,
+            durationMs,
+            positionMs,
+            thumbnailDataUrl
+        ));
     }
 
     private static bool IsSpotify(GlobalSystemMediaTransportControlsSession session)

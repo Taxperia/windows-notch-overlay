@@ -9,6 +9,10 @@ const DEFAULT_SETTINGS = Object.freeze({
     showMedia: true,
     compactSeconds: true,
     language: 'tr',
+    settingsMode: 'advanced',
+    mediaSource: 'spotify',
+    transparentCompactStrip: false,
+    alarmTone: 'classic',
     colorTheme: 'default',
     customTheme: {
       panel: '#0a0c10',
@@ -29,17 +33,80 @@ const DEFAULT_SETTINGS = Object.freeze({
       'dark-mode',
       'night-light',
       'battery',
+      'battery-detail',
       'network',
+      'notification-center',
+      'calendar',
+      'weather',
       'alarms',
-      'search'
+      'search',
+      'pomodoro',
+      'notes',
+      'ram-cleaner'
     ]
   },
   system: {
     startWithWindows: false,
-    softwareBrightnessLevel: 100
+    softwareBrightnessLevel: 100,
+    weatherCity: 'Istanbul',
+    settingsOpenMode: 'overlay',
+    microphoneDeviceId: 'default',
+    cameraDeviceId: 'default',
+    screenVideo: {
+      enabled: false,
+      url: '',
+      width: 420,
+      height: 236,
+      openHotkey: 'PageUp',
+      closeHotkey: 'PageDown'
+    }
   },
   updates: {
     autoCheck: false
+  },
+  content: {
+    primaryWidget: 'clock',
+    showDownloadSpeed: false,
+    showPing: false,
+    showHeadphoneBattery: false
+  },
+  integrations: {
+    discord: {
+      connected: false,
+      accent: '#5865f2',
+      tintMenu: true,
+      events: {
+        dm: true,
+        serverMessage: false,
+        mentionInServer: true,
+        mentionEverywhere: false,
+        call: true
+      }
+    },
+    github: {
+      connected: false,
+      accent: '#2f81f7',
+      tintMenu: true,
+      events: {
+        pullRequest: true,
+        review: true,
+        issue: true,
+        release: false,
+        actionFailed: true
+      }
+    },
+    youtube: {
+      connected: false,
+      accent: '#ff0033',
+      tintMenu: true,
+      events: {
+        upload: true,
+        commentLike: true,
+        subscriber: true,
+        mention: false,
+        live: true
+      }
+    }
   },
   features: {
     'focus-assist': true,
@@ -52,9 +119,16 @@ const DEFAULT_SETTINGS = Object.freeze({
     'dark-mode': true,
     'night-light': true,
     battery: true,
+    'battery-detail': true,
     network: true,
+    'notification-center': true,
+    calendar: true,
+    weather: true,
     alarms: true,
-    search: true
+    search: true,
+    pomodoro: true,
+    notes: true,
+    'ram-cleaner': true
   }
 });
 
@@ -68,39 +142,31 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function mergeSettings(base, override) {
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function mergeObject(base, override) {
   const merged = clone(base);
 
-  if (!override || typeof override !== 'object') {
+  if (!isPlainObject(override)) {
     return merged;
   }
 
-  merged.appearance = {
-    ...merged.appearance,
-    ...(override.appearance && typeof override.appearance === 'object' ? override.appearance : {})
-  };
+  Object.entries(override).forEach(([key, value]) => {
+    if (isPlainObject(value) && isPlainObject(merged[key])) {
+      merged[key] = mergeObject(merged[key], value);
+      return;
+    }
 
-  merged.appearance.customTheme = {
-    ...base.appearance.customTheme,
-    ...(override.appearance?.customTheme && typeof override.appearance.customTheme === 'object' ? override.appearance.customTheme : {})
-  };
-
-  merged.system = {
-    ...merged.system,
-    ...(override.system && typeof override.system === 'object' ? override.system : {})
-  };
-
-  merged.updates = {
-    ...merged.updates,
-    ...(override.updates && typeof override.updates === 'object' ? override.updates : {})
-  };
-
-  merged.features = {
-    ...merged.features,
-    ...(override.features && typeof override.features === 'object' ? override.features : {})
-  };
+    merged[key] = value;
+  });
 
   return merged;
+}
+
+function mergeSettings(base, override) {
+  return mergeObject(base, override);
 }
 
 async function loadSettings() {

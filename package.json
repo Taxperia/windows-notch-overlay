@@ -5,7 +5,7 @@
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron .",
+    "dev": "electron . --devtools",
     "build:media-helper": "dotnet publish src/helpers/media-session/MediaSessionHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/media-session/publish",
     "build:notification-helper": "dotnet publish src/helpers/notifications/NotificationHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/notifications/publish",
     "build:helpers": "npm run build:media-helper && npm run build:notification-helper",

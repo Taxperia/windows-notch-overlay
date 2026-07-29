@@ -9,7 +9,7 @@ const MEDIA_KEYS = {
   next: 0xB0
 };
 
-async function sendMediaCommand(command) {
+async function sendMediaKey(command) {
   const keyCode = MEDIA_KEYS[command];
   if (!keyCode) {
     throw new Error(`Unsupported media command: ${command}`);
@@ -45,9 +45,9 @@ function helperPath() {
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || '';
 }
 
-function runHelper(command, timeoutMs = 2500) {
+function runHelper(command, args = [], timeoutMs = 2500) {
   return new Promise((resolve, reject) => {
-    execFile(command, [], {
+    execFile(command, args, {
       windowsHide: true,
       timeout: timeoutMs,
       maxBuffer: 10 * 1024 * 1024
@@ -62,18 +62,19 @@ function runHelper(command, timeoutMs = 2500) {
   });
 }
 
-async function getWinRtMedia() {
-  const mediaHelperPath = helperPath();
-  if (!mediaHelperPath) {
-    return null;
+function mediaSourceArgs(preferredSource = 'spotify') {
+  if (preferredSource === 'active') {
+    return ['--source=active'];
   }
 
-  const output = await runHelper(mediaHelperPath);
-  const payload = JSON.parse(output);
-  if (!payload?.available) {
-    return null;
+  if (preferredSource === 'any') {
+    return ['--source=any'];
   }
 
+  return [];
+}
+
+function normalizeWinRtMedia(payload) {
   const status = String(payload.status || '').toLowerCase();
   const positionMs = Math.max(0, Number(payload.positionMs) || 0);
   const durationMs = Math.max(0, Number(payload.durationMs) || 0);
@@ -93,6 +94,50 @@ async function getWinRtMedia() {
     positionMs,
     startedAt: status === 'playing' ? Date.now() - positionMs : null
   };
+}
+
+async function getWinRtMedia(preferredSource = 'spotify') {
+  const mediaHelperPath = helperPath();
+  if (!mediaHelperPath) {
+    return null;
+  }
+
+  const output = await runHelper(mediaHelperPath, mediaSourceArgs(preferredSource));
+  const payload = JSON.parse(output);
+  if (!payload?.available) {
+    return null;
+  }
+
+  return normalizeWinRtMedia(payload);
+}
+
+async function sendWinRtMediaCommand(command, preferredSource = 'spotify') {
+  const mediaHelperPath = helperPath();
+  if (!mediaHelperPath) {
+    return null;
+  }
+
+  const output = await runHelper(
+    mediaHelperPath,
+    [...mediaSourceArgs(preferredSource), `--command=${command}`],
+    4000
+  );
+  const payload = JSON.parse(output);
+  return payload?.available ? normalizeWinRtMedia(payload) : null;
+}
+
+async function sendMediaCommand(command, options = {}) {
+  try {
+    const media = await sendWinRtMediaCommand(command, options.preferredSource);
+    if (media) {
+      return media;
+    }
+  } catch {
+    // Fall back to the global media key path if the helper cannot command a session.
+  }
+
+  await sendMediaKey(command);
+  return null;
 }
 
 function parseCsvLine(line) {
@@ -164,9 +209,9 @@ function parseSpotifyTitle(windowTitle) {
 let lastTrackKey = '';
 let trackStartedAt = Date.now();
 
-async function getCurrentMedia() {
+async function getCurrentMedia(options = {}) {
   try {
-    const winRtMedia = await getWinRtMedia();
+    const winRtMedia = await getWinRtMedia(options.preferredSource);
     if (winRtMedia) {
       return winRtMedia;
     }

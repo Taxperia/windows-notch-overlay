@@ -23,9 +23,16 @@
     "dark-mode": "Dark mode",
     "night-light": "Night light",
     "battery": "Battery saver",
+    "battery-detail": "Battery detail",
     "network": "Network",
+    "notification-center": "Notification center",
+    "calendar": "Calendar",
+    "weather": "Weather",
     "alarms": "Alarm",
     "search": "Search",
+    "pomodoro": "Pomodoro",
+    "notes": "Notes",
+    "ram-cleaner": "RAM cleaner",
     "external-apps": "External Apps"
   },
   "featureHelp": {
@@ -39,13 +46,21 @@
     "dark-mode": "Switches Windows light/dark theme state.",
     "night-light": "Toggles Night light without opening Quick Settings.",
     "battery": "Manages battery saver or a power saver plan.",
+    "battery-detail": "Shows battery or power saver details.",
     "network": "Opens the Windows network quick panel.",
+    "notification-center": "Lists recent Windows notifications inside the notch.",
+    "calendar": "Shows today's calendar view and month grid.",
+    "weather": "Opens weather for the selected city.",
     "alarms": "Creates alarms inside the notch.",
     "search": "Opens the in-notch search box.",
+    "pomodoro": "Opens the focus and break timer.",
+    "notes": "Keeps short notes inside the notch.",
+    "ram-cleaner": "Frees unused working-set memory like a PC manager.",
     "external-apps": "Opens built-in external services from the notch."
   },
   "tools": {
     "brightness": "Brightness",
+    "ramCleaner": "RAM cleaner",
     "externalApps": "External Apps",
     "externalSubtitle": "Built-in services and quick targets"
   }
