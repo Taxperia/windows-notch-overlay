@@ -2,7 +2,7 @@
 
 Bu dosya, GitHub'daki son uygulama sürümü olan `v0.1.1` sonrasında yapılan kullanıcıya dönük değişiklikleri özetler.
 
-## Unreleased - 2026-07-30
+## 0.2.0 - 2026-07-30
 
 ### Eklendi
 
@@ -28,6 +28,8 @@ Bu dosya, GitHub'daki son uygulama sürümü olan `v0.1.1` sonrasında yapılan 
 - Ağ hızı ilk örneğinde oluşabilen boş örnek hatası giderildi; indirme ve yükleme değerleri ayrı ve doğru birimlerle gösteriliyor.
 - Ekran içi videonun ayrı ayar penceresinde açılması engellendi; video her zaman ana çentikte gösteriliyor.
 - Ek içerikler etkinleştirildiğinde kapalı çentiğin genişliği ve saat/tarih yerleşimi daha kararlı hale getirildi.
+- Electron Builder ve ilişkili dolaylı bağımlılıklar güvenli sürümlere yükseltilerek Dependabot güvenlik uyarıları giderildi.
+- GitHub CodeQL default setup ile çakışan yinelenen Advanced iş akışı kaldırıldı; güvenlik taraması tek yapılandırmadan çalışacak şekilde düzeltildi.
 
 ### Deneysel / Devre Dışı
 
