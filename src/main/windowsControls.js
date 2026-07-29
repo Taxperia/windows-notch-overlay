@@ -68,6 +68,65 @@ function quotePowerShellLiteral(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function parseJsonObject(output) {
+  const text = String(output || '').trim();
+  const match = text.match(/\{[\s\S]*\}$/);
+  return JSON.parse(match ? match[0] : text);
+}
+
+function bluetoothRadioScript(toggle = false) {
+  const steps = [
+    "$ErrorActionPreference = 'Stop'",
+    'Add-Type -AssemblyName System.Runtime.WindowsRuntime',
+    '[Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType=WindowsRuntime] | Out-Null',
+    '[Windows.Devices.Radios.RadioKind, Windows.System.Devices, ContentType=WindowsRuntime] | Out-Null',
+    '[Windows.Devices.Radios.RadioState, Windows.System.Devices, ContentType=WindowsRuntime] | Out-Null',
+    '[Windows.Devices.Radios.RadioAccessStatus, Windows.System.Devices, ContentType=WindowsRuntime] | Out-Null',
+    "$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } | Select-Object -First 1)",
+    "function Await($operation, [type]$resultType) { $asTask = $asTaskGeneric.MakeGenericMethod($resultType); $task = $asTask.Invoke($null, @($operation)); $task.Wait() | Out-Null; $task.Result }",
+    '$access = Await ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus])',
+    "if ($access.ToString() -ne 'Allowed' -and $access.ToString() -ne 'Unspecified') { throw ('Bluetooth radio access denied: ' + $access.ToString()) }",
+    '$radios = Await ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])',
+    "$radio = @($radios | Where-Object { $_.Kind.ToString() -eq 'Bluetooth' } | Select-Object -First 1)[0]",
+    "if ($null -eq $radio) { throw 'Bluetooth radio not found.' }"
+  ];
+
+  if (toggle) {
+    steps.push(
+      "$target = if ($radio.State.ToString() -eq 'On') { [Windows.Devices.Radios.RadioState]::Off } else { [Windows.Devices.Radios.RadioState]::On }",
+      '$setResult = Await ($radio.SetStateAsync($target)) ([Windows.Devices.Radios.RadioAccessStatus])',
+      "if ($setResult.ToString() -ne 'Allowed') { throw ('Bluetooth state change denied: ' + $setResult.ToString()) }",
+      'Start-Sleep -Milliseconds 180'
+    );
+  }
+
+  steps.push(
+    '$state = $radio.State.ToString()',
+    '$payload = @{ available = $true; enabled = ($state -eq \'On\'); state = $state; name = $radio.Name; access = $access.ToString() }',
+    '$payload | ConvertTo-Json -Compress'
+  );
+
+  return steps.join('; ');
+}
+
+async function getBluetoothRadioApiState(toggle = false) {
+  const output = await runPowerShell(bluetoothRadioScript(toggle), 10000);
+  const payload = parseJsonObject(output);
+  if (!payload?.available) {
+    throw new Error('Bluetooth radio state unavailable.');
+  }
+
+  const enabled = payload.enabled === true || String(payload.enabled).toLowerCase() === 'true';
+  return {
+    enabled,
+    connected: false,
+    label: enabled ? 'Açık' : 'Kapalı',
+    detail: payload.name || 'Windows hızlı ayarı',
+    source: 'Windows Radio API',
+    state: payload.state || ''
+  };
+}
+
 async function readRegistryBinary(keyPath, valueName) {
   const psPath = `Registry::HKEY_CURRENT_USER\\${keyPath}`;
   const command = [
@@ -213,6 +272,12 @@ function isUserBluetoothDevice(device) {
 }
 
 async function getBluetoothState() {
+  try {
+    return await getBluetoothRadioApiState(false);
+  } catch {
+    // Fall back to PnP enumeration on older Windows builds or blocked Radio API access.
+  }
+
   try {
     const output = await run('pnputil.exe', ['/enum-devices', '/connected', '/class', 'Bluetooth']);
     const devices = parsePnPDevices(output);
@@ -977,13 +1042,13 @@ async function toggleNightLightState() {
   return setNightLightState(current.enabled !== true);
 }
 
-async function getBrightnessState() {
+async function readWmiBrightnessLevel() {
   try {
     let output = '';
     try {
       output = await runPowerShell(
         '(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1 -ExpandProperty CurrentBrightness)',
-        6000
+        5000
       );
     } catch {
       output = await run('wmic.exe', [
@@ -993,71 +1058,156 @@ async function getBrightnessState() {
         'get',
         'CurrentBrightness',
         '/value'
-      ], 5000);
+      ], 4000);
     }
 
-    const match = output.match(/(?:CurrentBrightness=)?\s*(\d+)/i);
-    const level = match ? Math.max(0, Math.min(100, Number.parseInt(match[1], 10))) : null;
-
-    if (level === null || Number.isNaN(level)) {
-      return {
-        available: false,
-        level: null,
-        message: 'Parlaklık bilgisi okunamadı.'
-      };
+    const match = String(output).match(/(?:CurrentBrightness=)?\s*(\d+)/i);
+    if (!match) {
+      return null;
     }
 
+    const level = Number.parseInt(match[1], 10);
+    return Number.isNaN(level) ? null : Math.max(0, Math.min(100, level));
+  } catch {
+    return null;
+  }
+}
+
+async function hasWmiBrightnessMethods() {
+  try {
+    const output = await runPowerShell(
+      'if (Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop | Select-Object -First 1) { "1" } else { "0" }',
+      4500
+    );
+    return String(output).trim().startsWith('1');
+  } catch {
+    return false;
+  }
+}
+
+async function setWmiBrightnessLevel(level) {
+  const nextLevel = Math.max(0, Math.min(100, Number.parseInt(level, 10) || 0));
+  try {
+    await runPowerShell(
+      `$level = ${nextLevel}; $methods = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop; foreach ($method in $methods) { Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout = 1; Brightness = $level} | Out-Null }`,
+      8000
+    );
+  } catch {
+    await run('wmic.exe', [
+      '/namespace:\\\\root\\wmi',
+      'path',
+      'WmiMonitorBrightnessMethods',
+      'where',
+      'Active=TRUE',
+      'call',
+      'WmiSetBrightness',
+      '1',
+      String(nextLevel)
+    ], 7000);
+  }
+
+  const after = await readWmiBrightnessLevel();
+  if (after == null || Math.abs(after - nextLevel) > 3) {
+    throw new Error('WMI parlaklık değeri değişmedi.');
+  }
+
+  return after;
+}
+
+async function getBrightnessState() {
+  const wmiLevel = await readWmiBrightnessLevel();
+  const wmiWritable = wmiLevel != null && await hasWmiBrightnessMethods();
+
+  if (wmiWritable) {
     return {
       available: true,
-      level,
+      writable: true,
+      level: wmiLevel,
       source: 'Windows WMI',
-      message: `Parlaklık %${level}`
+      message: `Parlaklık ${wmiLevel}%`
     };
-  } catch {
-    const external = getExternalBrightnessState();
-    return external.available
-      ? external
-      : {
-        available: false,
-        level: null,
-        message: 'Bu ekran WMI veya DDC/CI parlaklık kontrolünü desteklemiyor.'
-      };
   }
+
+  const external = getExternalBrightnessState();
+  if (external.available) {
+    return {
+      ...external,
+      writable: true
+    };
+  }
+
+  // Masaüstü monitörlerde WMI bazen sahte değer (ör. 75) döndürür ama yazamaz.
+  if (wmiLevel != null) {
+    return {
+      available: false,
+      writable: false,
+      readableOnly: true,
+      level: wmiLevel,
+      source: 'Windows WMI',
+      message: 'Parlaklık okunabiliyor ama bu ekranda donanım ile değiştirilemiyor.'
+    };
+  }
+
+  return {
+    available: false,
+    writable: false,
+    level: null,
+    message: 'Bu ekran WMI veya DDC/CI parlaklık kontrolünü desteklemiyor.'
+  };
 }
 
 async function setBrightnessLevel(level) {
   const nextLevel = Math.max(0, Math.min(100, Number.parseInt(level, 10) || 0));
-  try {
-    try {
-      await runPowerShell(
-        `$level = ${nextLevel}; $methods = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop; foreach ($method in $methods) { Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout = 1; Brightness = $level} | Out-Null }`,
-        10000
-      );
-    } catch {
-      await run('wmic.exe', [
-        '/namespace:\\\\root\\wmi',
-        'path',
-        'WmiMonitorBrightnessMethods',
-        'where',
-        'Active=TRUE',
-        'call',
-        'WmiSetBrightness',
-        '1',
-        String(nextLevel)
-      ], 8000);
-    }
 
-    return {
-      ok: true,
-      ...(await getBrightnessState())
-    };
-  } catch (error) {
-    return setExternalBrightnessLevel(nextLevel);
+  if (await hasWmiBrightnessMethods()) {
+    try {
+      const after = await setWmiBrightnessLevel(nextLevel);
+      return {
+        ok: true,
+        available: true,
+        writable: true,
+        level: after,
+        source: 'Windows WMI',
+        message: `Parlaklık ${after}%`
+      };
+    } catch {
+      // Fall through to DDC/CI.
+    }
   }
+
+  const external = setExternalBrightnessLevel(nextLevel);
+  if (external?.ok) {
+    return {
+      ...external,
+      writable: true
+    };
+  }
+
+  return {
+    ok: false,
+    available: false,
+    writable: false,
+    level: null,
+    message: external?.message || 'Donanım parlaklığı değiştirilemedi.'
+  };
 }
 
 async function toggleBluetoothRadio() {
   try {
+    try {
+      const radio = await getBluetoothRadioApiState(true);
+      return {
+        ok: true,
+        pending: false,
+        elevated: false,
+        enabled: radio.enabled,
+        state: radio,
+        source: radio.source
+      };
+    } catch {
+      // Fall through to PnP toggling if the quick-settings style Radio API is unavailable.
+    }
+
     const radios = await getBluetoothRadioDevices();
     if (!radios.length) {
       return {
@@ -1095,8 +1245,8 @@ async function getSilentState() {
   if (enabled === 0) {
     return {
       enabled: true,
-      label: 'Sessiz',
-      detail: 'Bildirimler kapalı'
+      label: 'Rahatsız etmeyin',
+      detail: 'Windows hızlı ayarı açık'
     };
   }
 
@@ -1104,14 +1254,14 @@ async function getSilentState() {
     return {
       enabled: false,
       label: 'Açık',
-      detail: 'Bildirimler açık'
+      detail: 'Windows hızlı ayarı kapalı'
     };
   }
 
   return {
     enabled: false,
     label: 'Açık',
-    detail: 'Bildirimler açık'
+    detail: 'Windows hızlı ayarı kapalı'
   };
 }
 
@@ -1126,8 +1276,9 @@ async function toggleSilentState() {
   return setSilentState(current.enabled !== true);
 }
 
-async function getControlState() {
-  const [camera, microphone, bluetooth, silent, darkMode, batterySaver, network, nightLight, brightness] = await Promise.all([
+async function getControlState(options = {}) {
+  const includeBrightness = options.includeBrightness !== false;
+  const tasks = [
     getPrivacyState('camera'),
     getMicrophoneState(),
     getBluetoothState(),
@@ -1135,9 +1286,16 @@ async function getControlState() {
     getDarkModeState(),
     getBatterySaverState(),
     getNetworkState(),
-    getNightLightState(),
-    getBrightnessState()
-  ]);
+    getNightLightState()
+  ];
+
+  if (includeBrightness) {
+    tasks.push(getBrightnessState());
+  }
+
+  const results = await Promise.all(tasks);
+  const [camera, microphone, bluetooth, silent, darkMode, batterySaver, network, nightLight] = results;
+  const brightness = includeBrightness ? results[8] : null;
 
   return {
     camera,
@@ -1148,11 +1306,19 @@ async function getControlState() {
     batterySaver,
     network,
     nightLight,
-    brightness: {
-      enabled: brightness.available ? true : null,
-      label: brightness.available ? `%${brightness.level}` : 'Yok',
-      detail: brightness.message
-    }
+    brightness: brightness
+      ? {
+        enabled: null,
+        label: brightness.available ? `${brightness.level}%` : 'Yok',
+        detail: brightness.message,
+        level: brightness.available ? brightness.level : null
+      }
+      : {
+        enabled: null,
+        label: '--',
+        detail: '',
+        level: null
+      }
   };
 }
 

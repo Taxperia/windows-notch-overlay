@@ -140,8 +140,8 @@ function getExternalBrightnessState() {
     monitors,
     source: 'DDC/CI',
     message: monitors.length === 1
-      ? `Monitör parlaklığı %${clampPercent(average)}`
-      : `${monitors.length} monitör parlaklığı ortalama %${clampPercent(average)}`
+      ? `Monitör parlaklığı ${clampPercent(average)}%`
+      : `${monitors.length} monitör parlaklığı ortalama ${clampPercent(average)}%`
   };
 }
 
@@ -181,8 +181,8 @@ function setExternalBrightnessLevel(level) {
     source: 'DDC/CI',
     monitors: changed,
     message: changed.length === 1
-      ? `Monitör parlaklığı %${nextLevel}`
-      : `${changed.length} monitör parlaklığı %${nextLevel}`
+      ? `Monitör parlaklığı ${nextLevel}%`
+      : `${changed.length} monitör parlaklığı ${nextLevel}%`
   };
 }
 

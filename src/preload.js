@@ -1,73 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const TURKISH_WEEKDAYS = [
-  'Pazar',
-  'Pazartesi',
-  'Salı',
-  'Çarşamba',
-  'Perşembe',
-  'Cuma',
-  'Cumartesi'
-];
-
-const TURKISH_MONTHS = [
-  'Ocak',
-  'Şubat',
-  'Mart',
-  'Nisan',
-  'Mayıs',
-  'Haziran',
-  'Temmuz',
-  'Ağustos',
-  'Eylül',
-  'Ekim',
-  'Kasım',
-  'Aralık'
-];
-
-function pad2(value) {
-  return String(value).padStart(2, '0');
-}
-
-function updateClockElements() {
-  const now = new Date();
-  const time = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-  const compactDate = `${pad2(now.getDate())}.${pad2(now.getMonth() + 1)}.${now.getFullYear()}`;
-  const longDate = `${TURKISH_WEEKDAYS[now.getDay()]}, ${pad2(now.getDate())} ${TURKISH_MONTHS[now.getMonth()]}`;
-
-  const timeCompact = document.getElementById('timeCompact');
-  const dateCompact = document.getElementById('dateCompact');
-  const timeFull = document.getElementById('timeFull');
-  const dateFull = document.getElementById('dateFull');
-
-  if (timeCompact) {
-    timeCompact.textContent = time;
-  }
-
-  if (dateCompact) {
-    dateCompact.textContent = compactDate;
-  }
-
-  if (timeFull) {
-    timeFull.textContent = time;
-  }
-
-  if (dateFull) {
-    dateFull.textContent = longDate;
-  }
-}
-
-function startClockFallback() {
-  updateClockElements();
-  setInterval(updateClockElements, 1000);
-}
-
-if (document.readyState === 'loading') {
-  window.addEventListener('DOMContentLoaded', startClockFallback, { once: true });
-} else {
-  startClockFallback();
-}
-
 contextBridge.exposeInMainWorld('notch', {
   onMetrics: (callback) => ipcRenderer.on('metrics:update', (_event, payload) => callback(payload)),
   onMedia: (callback) => ipcRenderer.on('media:update', (_event, payload) => callback(payload)),
@@ -76,24 +8,41 @@ contextBridge.exposeInMainWorld('notch', {
   onOverlayMode: (callback) => ipcRenderer.on('overlay:mode', (_event, payload) => callback(payload)),
   onNotification: (callback) => ipcRenderer.on('notifications:update', (_event, payload) => callback(payload)),
   onUpdateStatus: (callback) => ipcRenderer.on('updates:status', (_event, payload) => callback(payload)),
+  onScreenVideoShow: (callback) => ipcRenderer.on('screen-video:show-inline', () => callback()),
+  onScreenVideoHide: (callback) => ipcRenderer.on('screen-video:hide-inline', () => callback()),
   getMetrics: () => ipcRenderer.invoke('metrics:get'),
   getMedia: () => ipcRenderer.invoke('media:get'),
   getControls: () => ipcRenderer.invoke('controls:get'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   getAppInfo: () => ipcRenderer.invoke('app:info'),
+  getNotifications: () => ipcRenderer.invoke('notifications:get'),
+  dismissNotification: (id) => ipcRenderer.invoke('notifications:dismiss', id),
+  getWeather: (city) => ipcRenderer.invoke('weather:get', city),
+  clearAppCache: () => ipcRenderer.invoke('app:clear-cache'),
+  connectIntegration: (appId, credentials) => ipcRenderer.invoke('integration:connect', appId, credentials),
+  disconnectIntegration: (appId) => ipcRenderer.invoke('integration:disconnect', appId),
+  getIntegrationStatus: (appId) => ipcRenderer.invoke('integration:status', appId),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   checkForUpdates: (options) => ipcRenderer.invoke('updates:check', options),
   openUpdate: (updateInfo) => ipcRenderer.invoke('updates:open', updateInfo),
   expand: () => ipcRenderer.send('overlay:expand'),
   collapse: () => ipcRenderer.send('overlay:collapse'),
   showSettings: () => ipcRenderer.send('overlay:settings'),
+  openSettingsPreferred: () => ipcRenderer.send('settings:open-preferred'),
   showControls: () => ipcRenderer.send('overlay:controls'),
   showMedia: () => ipcRenderer.send('overlay:media'),
   showAlarm: () => ipcRenderer.send('overlay:alarm'),
+  closeCurrentWindow: () => ipcRenderer.send('window:close-current'),
   media: (command) => ipcRenderer.invoke('media:command', command),
   quickAction: (action) => ipcRenderer.invoke('quick:action', action),
+  showScreenVideo: () => ipcRenderer.invoke('screen-video:show'),
+  hideScreenVideo: () => ipcRenderer.invoke('screen-video:hide'),
+  toggleScreenVideo: () => ipcRenderer.invoke('screen-video:toggle'),
+  getNetworkExtras: (options) => ipcRenderer.invoke('extras:network', options),
   getBrightness: () => ipcRenderer.invoke('brightness:get'),
   setBrightness: (level) => ipcRenderer.invoke('brightness:set', level),
+  getRamSnapshot: () => ipcRenderer.invoke('system:ram-snapshot'),
+  cleanRam: () => ipcRenderer.invoke('system:clean-ram'),
   getAudioMixer: () => ipcRenderer.invoke('audio-mixer:get'),
   setAudioSessionVolume: (sessionId, volume) => ipcRenderer.invoke('audio-mixer:set-volume', sessionId, volume),
   setAudioSessionMuted: (sessionId, muted) => ipcRenderer.invoke('audio-mixer:set-muted', sessionId, muted),
