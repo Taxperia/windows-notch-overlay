@@ -30,6 +30,7 @@ Bu dosya, GitHub'daki son uygulama sürümü olan `v0.1.1` sonrasında yapılan 
 - Ek içerikler etkinleştirildiğinde kapalı çentiğin genişliği ve saat/tarih yerleşimi daha kararlı hale getirildi.
 - Electron Builder ve ilişkili dolaylı bağımlılıklar güvenli sürümlere yükseltilerek Dependabot güvenlik uyarıları giderildi.
 - GitHub CodeQL default setup ile çakışan yinelenen Advanced iş akışı kaldırıldı; güvenlik taraması tek yapılandırmadan çalışacak şekilde düzeltildi.
+- JavaScript sözdizimi, JSON geçerliliği ve package/lock sürüm tutarlılığı için GitHub Actions kaynak kontrolü eklendi.
 
 ### Deneysel / Devre Dışı
 
