@@ -23,9 +23,16 @@
     "dark-mode": "Karanlık mod",
     "night-light": "Gece Işığı",
     "battery": "Güç Tasarrufu",
+    "battery-detail": "Pil detayı",
     "network": "Ağ",
+    "notification-center": "Bildirim merkezi",
+    "calendar": "Takvim",
+    "weather": "Hava durumu",
     "alarms": "Alarm",
     "search": "Arama",
+    "pomodoro": "Pomodoro",
+    "notes": "Notlar",
+    "ram-cleaner": "RAM temizleyici",
     "external-apps": "Harici Uygulamalar"
   },
   "featureHelp": {
@@ -39,13 +46,21 @@
     "dark-mode": "Windows koyu/açık tema durumunu değiştirir.",
     "night-light": "Hızlı panel açmadan Gece Işığı durumunu değiştirir.",
     "battery": "Laptopta pil tasarrufu, kasada güç tasarrufu planını yönetir.",
+    "battery-detail": "Pil veya güç tasarrufu durumunu detaylı gösterir.",
     "network": "Windows ağ hızlı panelini açar.",
+    "notification-center": "Son Windows bildirimlerini çentik içinde listeler.",
+    "calendar": "Bugünün takvim görünümünü ve günleri gösterir.",
+    "weather": "Seçilen şehir için hava durumu panelini açar.",
     "alarms": "Çentik içinde alarm oluşturur.",
     "search": "Çentik içinde arama kutusu açar.",
+    "pomodoro": "Odak ve mola sayacını çentikte açar.",
+    "notes": "Kısa notları çentik içinde tutar.",
+    "ram-cleaner": "Kullanılmayan çalışma belleklerini temizleyerek RAM boşaltır.",
     "external-apps": "Yerleşik harici servisleri çentikten açar."
   },
   "tools": {
     "brightness": "Parlaklık",
+    "ramCleaner": "RAM temizleyici",
     "externalApps": "Harici Uygulamalar",
     "externalSubtitle": "Yerleşik servisler ve hızlı hedefler"
   }
