@@ -32,7 +32,7 @@
     "koffi": "^2.16.1"
   },
   "devDependencies": {
-    "electron": "^42.0.0",
+    "electron": "^42.5.1",
     "electron-builder": "^26.15.3"
   },
   "build": {
