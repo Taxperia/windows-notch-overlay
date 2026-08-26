@@ -6,11 +6,13 @@
   "settings": {
     "home": "Giriş",
     "general": "Genel",
+    "content": "İndirmeler",
+    "theme": "Tema",
     "quick": "Hızlı menüler",
-    "external": "Harici Uygulamalar",
+    "external": "Harici",
     "privacy": "Gizlilik",
     "system": "Sistem",
-    "about": "Hakkımda"
+    "about": "Hakkında"
   },
   "menu": {
     "focus-assist": "Odaklanma yardımı",

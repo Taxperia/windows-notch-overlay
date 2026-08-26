@@ -22,6 +22,9 @@ const DEFAULT_SETTINGS = Object.freeze({
       connected: '#2563eb'
     },
     notchStyle: 'attached',
+    cornerRadius: 18,
+    compactWidth: 250,
+    compactHeight: 34,
     menuOrder: [
       'focus-assist',
       'bluetooth',

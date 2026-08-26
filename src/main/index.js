@@ -83,6 +83,7 @@ let softwareBrightnessLevel = 100;
 let brightnessCache = { at: 0, value: null };
 let overlayMode = 'collapsed';
 let collapsedBounds = { ...COLLAPSED_BOUNDS };
+let currentNotchStyle = 'attached';
 let microphoneMutedByApp = false;
 let notificationAccessRequested = false;
 let notificationsPrimed = false;
@@ -95,22 +96,49 @@ let lastNetworkSample = null;
 let notificationHistory = [];
 
 function isDetachedNotchStyle(style) {
-  return ['floating', 'pill', 'compact', 'angular', 'slab'].includes(style);
+  return ['floating', 'pill', 'compact'].includes(style);
+}
+
+function compactTopPad(style) {
+  if (style === 'pill') {
+    return 8;
+  }
+  if (style === 'floating' || style === 'compact') {
+    return 6;
+  }
+  return 0;
+}
+
+function clampCompactWidth(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return COLLAPSED_BOUNDS.width;
+  }
+  return Math.max(200, Math.min(420, Math.round(next)));
+}
+
+function clampCompactHeight(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return COLLAPSED_BOUNDS.height;
+  }
+  return Math.max(28, Math.min(52, Math.round(next)));
 }
 
 function collapsedBoundsForSettings(settings) {
+  const style = settings?.appearance?.notchStyle || 'attached';
+  const baseWidth = clampCompactWidth(settings?.appearance?.compactWidth);
+  const baseHeight = clampCompactHeight(settings?.appearance?.compactHeight);
+  const topPad = compactTopPad(style);
   const extrasCount = (settings?.content?.showDownloadSpeed === true ? 2 : 0)
     + (settings?.content?.showPing === true ? 1 : 0)
     + (settings?.content?.showHeadphoneBattery === true ? 1 : 0);
 
-  if (!extrasCount) {
-    return COLLAPSED_BOUNDS;
-  }
+  const extraWidth = extrasCount > 0 ? 40 + (extrasCount * 54) : 0;
 
-  const widthsByExtrasCount = [COLLAPSED_BOUNDS.width, 318, 392, 456, 520];
   return {
-    ...COLLAPSED_BOUNDS,
-    width: widthsByExtrasCount[extrasCount] || widthsByExtrasCount.at(-1)
+    width: baseWidth + extraWidth,
+    height: baseHeight + topPad + 2
   };
 }
 
@@ -694,25 +722,52 @@ function createWindow() {
   });
 }
 
-function createSettingsWindow() {
+const SETTINGS_THEME_PANELS = {
+  default: '#0a0c10',
+  slate: '#111827',
+  contrast: '#04080d',
+  light: '#f8fafc',
+  forest: '#07130f',
+  ruby: '#17070c'
+};
+
+function settingsWindowBackground(settings) {
+  const colorTheme = settings?.appearance?.colorTheme || 'default';
+  if (colorTheme === 'custom') {
+    return settings?.appearance?.customTheme?.panel || SETTINGS_THEME_PANELS.default;
+  }
+  return SETTINGS_THEME_PANELS[colorTheme] || SETTINGS_THEME_PANELS.default;
+}
+
+function syncSettingsWindowChrome(settings) {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    return;
+  }
+  settingsWindow.setBackgroundColor(settingsWindowBackground(settings));
+}
+
+async function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show();
     settingsWindow.focus();
     return settingsWindow;
   }
 
+  const settings = await loadSettings();
   settingsWindow = new BrowserWindow({
-    width: 820,
-    height: 620,
-    minWidth: 760,
-    minHeight: 540,
-    frame: true,
+    width: 860,
+    height: 640,
+    minWidth: 780,
+    minHeight: 560,
+    frame: false,
     autoHideMenuBar: true,
     transparent: false,
-    backgroundColor: '#101217',
+    backgroundColor: settingsWindowBackground(settings),
     resizable: true,
+    maximizable: false,
+    fullscreenable: false,
     show: false,
-    title: 'Notch Ayarları',
+    title: 'Ayarlar',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
@@ -741,7 +796,7 @@ function createSettingsWindow() {
 async function openSettingsByPreference() {
   const settings = await loadSettings();
   if (settings?.system?.settingsOpenMode === 'window') {
-    createSettingsWindow();
+    await createSettingsWindow();
     return;
   }
 
@@ -760,14 +815,49 @@ function getOverlayBounds(size) {
   };
 }
 
-function boundsForOverlayMode(mode) {
+function panelChromePad(style) {
+  if (style === 'pill') {
+    return { top: 8, edge: 2 };
+  }
+  if (style === 'floating' || style === 'compact') {
+    return { top: 6, edge: 2 };
+  }
+  return { top: 0, edge: 2 };
+}
+
+function withPanelChrome(bounds, style = currentNotchStyle) {
+  const pad = panelChromePad(style);
   return {
-    collapsed: collapsedBounds,
-    controls: EXPANDED_BOUNDS,
-    media: MEDIA_BOUNDS,
-    alarm: ALARM_BOUNDS,
-    settings: SETTINGS_BOUNDS
-  }[mode] || collapsedBounds;
+    width: bounds.width + pad.edge * 2,
+    height: bounds.height + pad.top + pad.edge
+  };
+}
+
+function boundsForOverlayMode(mode) {
+  if (mode === 'collapsed') {
+    return collapsedBounds;
+  }
+
+  if (mode === 'settings') {
+    return {
+      width: SETTINGS_BOUNDS.width,
+      height: SETTINGS_BOUNDS.height
+    };
+  }
+
+  if (mode === 'controls') {
+    return withPanelChrome(EXPANDED_BOUNDS);
+  }
+
+  if (mode === 'media') {
+    return withPanelChrome(MEDIA_BOUNDS);
+  }
+
+  if (mode === 'alarm') {
+    return withPanelChrome(ALARM_BOUNDS);
+  }
+
+  return collapsedBounds;
 }
 
 function setOverlayMode(nextMode) {
@@ -783,7 +873,8 @@ function setOverlayMode(nextMode) {
 }
 
 function applyRuntimeSettings(settings) {
-  const nextTheme = isDetachedNotchStyle(settings?.appearance?.notchStyle) ? 'floating' : 'attached';
+  const nextStyle = settings?.appearance?.notchStyle || 'attached';
+  const nextTheme = isDetachedNotchStyle(nextStyle) ? 'floating' : 'attached';
   const shouldStartWithWindows = settings?.system?.startWithWindows === true;
   const savedSoftwareLevel = clampPercent(settings?.system?.softwareBrightnessLevel, 100);
   softwareBrightnessLevel = 100;
@@ -795,6 +886,7 @@ function applyRuntimeSettings(settings) {
       }
     }).catch(() => {});
   }
+  currentNotchStyle = nextStyle;
   collapsedBounds = collapsedBoundsForSettings(settings);
 
   app.setLoginItemSettings({
@@ -810,8 +902,8 @@ function applyRuntimeSettings(settings) {
       mainWindow.setBounds(getOverlayBounds(boundsForOverlayMode(overlayMode)), false);
       mainWindow.webContents.send('settings:update', settings);
     }
-  } else if (overlayMode === 'collapsed' && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setBounds(getOverlayBounds(collapsedBounds), false);
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBounds(getOverlayBounds(boundsForOverlayMode(overlayMode)), false);
   }
 }
 
@@ -855,6 +947,7 @@ async function publishControls() {
 
 async function publishSettings() {
   const settings = await loadSettings();
+  syncSettingsWindowChrome(settings);
   sendToRendererWindows('settings:update', settings);
 }
 
