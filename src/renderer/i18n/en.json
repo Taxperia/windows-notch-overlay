@@ -6,8 +6,10 @@
   "settings": {
     "home": "Home",
     "general": "General",
+    "content": "Downloads",
+    "theme": "Theme",
     "quick": "Quick Menus",
-    "external": "External Apps",
+    "external": "External",
     "privacy": "Privacy",
     "system": "System",
     "about": "About"

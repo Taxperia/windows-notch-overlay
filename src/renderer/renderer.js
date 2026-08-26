@@ -419,6 +419,9 @@ const DEFAULT_SETTINGS = {
     colorTheme: 'default',
     customTheme: DEFAULT_CUSTOM_THEME,
     notchStyle: 'attached',
+    cornerRadius: 18,
+    compactWidth: 250,
+    compactHeight: 34,
     menuOrder: DEFAULT_MENU_ORDER
   },
   system: {
@@ -530,6 +533,56 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
+function normalizeCornerRadius(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return DEFAULT_SETTINGS.appearance.cornerRadius;
+  }
+  return Math.max(0, Math.min(28, Math.round(next)));
+}
+
+function normalizeCompactWidth(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return DEFAULT_SETTINGS.appearance.compactWidth;
+  }
+  return Math.max(200, Math.min(420, Math.round(next)));
+}
+
+function normalizeCompactHeight(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return DEFAULT_SETTINGS.appearance.compactHeight;
+  }
+  return Math.max(28, Math.min(52, Math.round(next)));
+}
+
+function normalizeNotchAppearance(appearance) {
+  let notchStyle = appearance.notchStyle;
+  const hasExplicitRadius = appearance.cornerRadius !== undefined && appearance.cornerRadius !== null && appearance.cornerRadius !== '';
+  let cornerRadius = normalizeCornerRadius(appearance.cornerRadius);
+  const compactWidth = normalizeCompactWidth(appearance.compactWidth);
+  const compactHeight = normalizeCompactHeight(appearance.compactHeight);
+
+  if (notchStyle === 'angular') {
+    if (!hasExplicitRadius) {
+      cornerRadius = 0;
+    }
+    notchStyle = 'attached';
+  } else if (notchStyle === 'slab') {
+    if (!hasExplicitRadius) {
+      cornerRadius = 6;
+    }
+    notchStyle = 'attached';
+  } else if (!['attached', 'floating', 'pill', 'compact'].includes(notchStyle)) {
+    notchStyle = 'attached';
+  }
+
+  cornerRadius = Math.min(cornerRadius, Math.floor(compactHeight / 2));
+
+  return { notchStyle, cornerRadius, compactWidth, compactHeight };
+}
+
 function normalizeSettings(settings) {
   const appearance = {
     ...DEFAULT_SETTINGS.appearance,
@@ -537,6 +590,11 @@ function normalizeSettings(settings) {
   };
   appearance.menuOrder = normalizeMenuOrder(appearance.menuOrder);
   appearance.customTheme = normalizeCustomTheme(appearance.customTheme);
+  const migrated = normalizeNotchAppearance(settings?.appearance || {});
+  appearance.notchStyle = migrated.notchStyle;
+  appearance.cornerRadius = migrated.cornerRadius;
+  appearance.compactWidth = migrated.compactWidth;
+  appearance.compactHeight = migrated.compactHeight;
   const system = {
     ...DEFAULT_SETTINGS.system,
     ...(settings?.system || {})
@@ -634,6 +692,12 @@ function applyTheme() {
   const urlTheme = params.get('theme') === 'floating' ? 'floating' : 'attached';
   const notchStyle = appSettings.appearance.notchStyle || urlTheme;
   const colorTheme = appSettings.appearance.colorTheme || 'default';
+  const compactWidth = normalizeCompactWidth(appSettings.appearance.compactWidth);
+  const compactHeight = normalizeCompactHeight(appSettings.appearance.compactHeight);
+  const cornerRadius = Math.min(
+    normalizeCornerRadius(appSettings.appearance.cornerRadius),
+    Math.floor(compactHeight / 2)
+  );
   const colors = colorTheme === 'custom'
     ? appSettings.appearance.customTheme
     : THEME_PRESETS[colorTheme]?.colors || THEME_PRESETS.default.colors;
@@ -642,18 +706,62 @@ function applyTheme() {
   elements.notch.classList.toggle('theme-attached', notchStyle === 'attached');
   elements.notch.classList.toggle('theme-pill', notchStyle === 'pill');
   elements.notch.classList.toggle('theme-compact', notchStyle === 'compact');
-  elements.notch.classList.toggle('theme-angular', notchStyle === 'angular');
-  elements.notch.classList.toggle('theme-slab', notchStyle === 'slab');
   elements.notch.classList.toggle('color-slate', false);
   elements.notch.classList.toggle('color-contrast', false);
   elements.notch.classList.toggle('color-light', colorTheme === 'light');
-  elements.notch.style.setProperty('--panel', hexToRgba(colors.panel, colorTheme === 'light' ? 0.98 : 0.985));
-  elements.notch.style.setProperty('--panel-2', hexToRgba(colors.panel, colorTheme === 'light' ? 0.94 : 0.96));
-  elements.notch.style.setProperty('--surface', hexToRgba(colors.surface, colorTheme === 'light' ? 0.92 : 0.96));
-  elements.notch.style.setProperty('--surface-hover', hexToRgba(colors.surface, colorTheme === 'light' ? 1 : 0.98));
-  elements.notch.style.setProperty('--text', colors.text);
-  elements.notch.style.setProperty('--active', colors.active);
-  elements.notch.style.setProperty('--connected', colors.connected);
+  elements.notch.style.setProperty('--notch-radius', `${cornerRadius}px`);
+  elements.notch.style.setProperty('--notch-radius-sm', `${Math.min(cornerRadius, Math.floor(compactHeight / 2))}px`);
+  elements.notch.style.setProperty('--compact-width', `${compactWidth}px`);
+  elements.notch.style.setProperty('--compact-height', `${compactHeight}px`);
+  const themeTokens = {
+    '--panel': hexToRgba(colors.panel, colorTheme === 'light' ? 0.98 : 0.985),
+    '--panel-2': hexToRgba(colors.surface, colorTheme === 'light' ? 0.94 : 0.92),
+    '--surface': hexToRgba(colors.surface, colorTheme === 'light' ? 0.92 : 0.96),
+    '--surface-hover': hexToRgba(colors.surface, colorTheme === 'light' ? 1 : 0.98),
+    '--text': colors.text,
+    '--active': colors.active,
+    '--connected': colors.connected,
+    '--muted': hexToRgba(colors.text, colorTheme === 'light' ? 0.62 : 0.68),
+    '--dim': hexToRgba(colors.text, colorTheme === 'light' ? 0.45 : 0.42),
+    '--line': hexToRgba(colors.text, colorTheme === 'light' ? 0.14 : 0.14),
+    '--surface-border': hexToRgba(colors.text, colorTheme === 'light' ? 0.16 : 0.12)
+  };
+  Object.entries(themeTokens).forEach(([name, value]) => {
+    elements.notch.style.setProperty(name, value);
+    document.documentElement.style.setProperty(name, value);
+  });
+  document.documentElement.style.colorScheme = colorTheme === 'light' ? 'light' : 'dark';
+  // Overlay penceresi şeffaf kalmalı; panel rengi sadece ayrı ayarlar penceresinde boyanır.
+  if (IS_STANDALONE_SETTINGS_WINDOW) {
+    document.documentElement.style.background = colors.panel;
+    if (document.body) {
+      document.body.style.background = colors.panel;
+    }
+  } else {
+    document.documentElement.style.background = 'transparent';
+    if (document.body) {
+      document.body.style.background = 'transparent';
+    }
+  }
+
+  const syncRange = (id, valueId, value) => {
+    const range = document.getElementById(id);
+    const output = document.getElementById(valueId);
+    if (range && Number(range.value) !== value) {
+      range.value = String(value);
+    }
+    if (output) {
+      output.textContent = String(value);
+    }
+  };
+  syncRange('cornerRadiusRange', 'cornerRadiusValue', cornerRadius);
+  syncRange('compactWidthRange', 'compactWidthValue', compactWidth);
+  syncRange('compactHeightRange', 'compactHeightValue', compactHeight);
+  document.querySelectorAll('.corner-radius-sample').forEach((sample) => {
+    sample.style.borderRadius = `${cornerRadius}px`;
+    sample.style.width = `${Math.min(220, compactWidth)}px`;
+    sample.style.height = `${compactHeight}px`;
+  });
 }
 
 function hexToRgba(hex, alpha) {
@@ -1072,14 +1180,17 @@ function renderMenu() {
 function renderFeatureSettings() {
   elements.featureSettingsList.innerHTML = orderedMenuItems().map((item) => {
     const enabled = isFeatureEnabled(item.action);
+    const label = menuLabel(item);
+    const help = t(`featureHelp.${item.action}`, FEATURE_HELP[item.action] || 'Hızlı menü öğesini gösterir.');
     return `
-      <div class="settings-row">
-        <div>
-          <strong>${menuLabel(item)}</strong>
-          <span>${t(`featureHelp.${item.action}`, FEATURE_HELP[item.action] || 'Hızlı menü öğesini gösterir.')}</span>
+      <article class="feature-card${enabled ? ' is-enabled' : ''}">
+        <div class="feature-card-icon" aria-hidden="true">${iconSvg(item.icon)}</div>
+        <div class="feature-card-copy">
+          <strong>${label}</strong>
+          <span>${help}</span>
         </div>
-        <button class="switch${enabled ? ' is-on' : ''}" data-feature-toggle="${item.action}" aria-label="${menuLabel(item)}"></button>
-      </div>
+        <button class="switch${enabled ? ' is-on' : ''}" data-feature-toggle="${item.action}" aria-label="${label}"></button>
+      </article>
     `;
   }).join('');
 
@@ -1365,24 +1476,19 @@ function applyCustomColorPreview(key, value) {
     elements.customThemePreview.style.setProperty('--preview-connected', colors.connected);
   }
 
-  if (appSettings.appearance.colorTheme === 'custom') {
-    elements.notch.style.setProperty('--panel', hexToRgba(colors.panel, 0.985));
-    elements.notch.style.setProperty('--panel-2', hexToRgba(colors.panel, 0.96));
-    elements.notch.style.setProperty('--surface', hexToRgba(colors.surface, 0.96));
-    elements.notch.style.setProperty('--surface-hover', hexToRgba(colors.surface, 0.98));
-    elements.notch.style.setProperty('--text', colors.text);
-    elements.notch.style.setProperty('--active', colors.active);
-    elements.notch.style.setProperty('--connected', colors.connected);
-  }
 }
 
 function renderThemeControls() {
+  const colorTheme = appSettings.appearance.colorTheme || 'default';
+  const activeAccent = String(appSettings.appearance.customTheme?.active || THEME_PRESETS[colorTheme]?.colors?.active || DEFAULT_CUSTOM_THEME.active).toLowerCase();
+
   document.querySelectorAll('[data-theme-preview]').forEach((preview) => {
     const theme = preview.dataset.themePreview;
     const colors = theme === 'custom'
       ? appSettings.appearance.customTheme
       : THEME_PRESETS[theme]?.colors || THEME_PRESETS.default.colors;
     preview.style.setProperty('--preview-panel', colors.panel);
+    preview.style.setProperty('--preview-surface', colors.surface);
     preview.style.setProperty('--preview-active', colors.active);
     preview.style.setProperty('--preview-connected', colors.connected);
   });
@@ -1391,13 +1497,23 @@ function renderThemeControls() {
     input.value = appSettings.appearance.customTheme[input.dataset.customColor] || DEFAULT_CUSTOM_THEME[input.dataset.customColor];
   });
   document.querySelectorAll('[data-open-custom-theme]').forEach((button) => {
-    button.classList.toggle('is-current', appSettings.appearance.colorTheme === 'custom');
+    button.classList.toggle('is-current', colorTheme === 'custom');
   });
+  document.querySelectorAll('[data-dark-theme-toggle]').forEach((button) => {
+    button.classList.toggle('is-on', colorTheme !== 'light');
+  });
+  document.querySelectorAll('[data-accent-preset]').forEach((button) => {
+    button.classList.toggle('is-current', String(button.dataset.accentPreset || '').toLowerCase() === activeAccent);
+  });
+  const themeSelect = document.getElementById('themeSelect');
+  if (themeSelect && [...themeSelect.options].some((option) => option.value === colorTheme)) {
+    themeSelect.value = colorTheme;
+  }
   applyCustomColorPreview('', '');
 }
 
 function isDetachedStyle(style) {
-  return ['floating', 'pill', 'compact', 'angular', 'slab'].includes(style);
+  return ['floating', 'pill', 'compact'].includes(style);
 }
 
 function syncFloatingVariantControls() {
@@ -1511,7 +1627,11 @@ async function refreshMediaDevices({ requestLabels = false } = {}) {
 
 function applyLanguageText() {
   document.querySelectorAll('.settings-nav[data-settings-section]').forEach((button) => {
-    button.textContent = t(`settings.${button.dataset.settingsSection}`, button.textContent);
+    const label = button.querySelector('.settings-nav-label');
+    if (!label) {
+      return;
+    }
+    label.textContent = t(`settings.${button.dataset.settingsSection}`, label.textContent);
   });
 }
 
@@ -1541,7 +1661,10 @@ function applySettings(settings, options = {}) {
   const featuresPanelChanged = menuChanged;
   const themeChanged = previous?.appearance?.colorTheme !== nextSettings.appearance.colorTheme
     || JSON.stringify(previous?.appearance?.customTheme) !== JSON.stringify(nextSettings.appearance.customTheme)
-    || previous?.appearance?.notchStyle !== nextSettings.appearance.notchStyle;
+    || previous?.appearance?.notchStyle !== nextSettings.appearance.notchStyle
+    || previous?.appearance?.cornerRadius !== nextSettings.appearance.cornerRadius
+    || previous?.appearance?.compactWidth !== nextSettings.appearance.compactWidth
+    || previous?.appearance?.compactHeight !== nextSettings.appearance.compactHeight;
   const extrasChanged = contentExtrasKey(previous) !== contentExtrasKey(nextSettings);
   const contentChanged = JSON.stringify(previous?.content) !== JSON.stringify(nextSettings.content)
     || JSON.stringify(previous?.system?.screenVideo) !== JSON.stringify(nextSettings.system?.screenVideo);
@@ -2768,21 +2891,23 @@ function resetOverlayUiState() {
 }
 
 function showSettingsSection(sectionName) {
-  const selected = sectionName || 'home';
+  const selected = sectionName === 'home' ? 'general' : (sectionName || 'general');
   const titleMap = {
-    home: t('settings.home', 'Giriş'),
     general: t('settings.general', 'Genel'),
-    content: 'İçerik',
+    content: t('settings.content', 'İndirmeler'),
+    theme: t('settings.theme', 'Tema Ayarları'),
     quick: t('settings.quick', 'Hızlı menüler'),
     external: t('settings.external', 'Harici Uygulamalar'),
     privacy: t('settings.privacy', 'Gizlilik'),
     system: t('settings.system', 'Sistem'),
-    about: t('settings.about', 'Hakkımda'),
+    about: t('settings.about', 'Hakkında'),
     'theme-custom': 'Tema Özelleştir'
   };
 
   document.querySelectorAll('.settings-nav[data-settings-section]').forEach((button) => {
-    button.classList.toggle('is-current', button.dataset.settingsSection === selected);
+    const navSection = button.dataset.settingsSection;
+    const isCurrent = navSection === selected || (selected === 'theme-custom' && navSection === 'theme');
+    button.classList.toggle('is-current', isCurrent);
   });
 
   document.querySelectorAll('[data-section-panel]').forEach((panel) => {
@@ -2816,7 +2941,7 @@ function filterSettingsSearch() {
   });
 
   if (!hasQuery) {
-    const current = document.querySelector('.settings-nav.is-current')?.dataset.settingsSection || 'home';
+    const current = document.querySelector('.settings-nav.is-current')?.dataset.settingsSection || 'general';
     document.querySelectorAll('[data-section-panel]').forEach((panel) => {
       panel.classList.toggle('is-visible', panel.dataset.sectionPanel === current);
     });
@@ -2847,7 +2972,7 @@ function openSettingsView() {
   if (!IS_STANDALONE_SETTINGS_WINDOW) {
     api.showSettings();
   }
-  showSettingsSection('home');
+  showSettingsSection('general');
 }
 
 function closeSettingsView() {
@@ -2873,7 +2998,7 @@ function enterStandaloneSettingsWindow() {
   elements.notch.classList.remove('is-tool');
   setMediaMode(false);
   setAlarmMode(false);
-  showSettingsSection('home');
+  showSettingsSection('general');
 }
 
 function syncOverlayMode(mode) {
@@ -2892,7 +3017,7 @@ function syncOverlayMode(mode) {
     elements.notch.classList.remove('is-tool');
     setMediaMode(false);
     setAlarmMode(false);
-    showSettingsSection('home');
+    showSettingsSection('general');
     return;
   }
 
@@ -3770,8 +3895,94 @@ function bindEvents() {
           const media = await api.getMedia();
           renderMedia(media);
         }
+        if (select.dataset.settingSelect === 'appearance.colorTheme' && select.value === 'custom') {
+          showSettingsSection('theme-custom');
+        }
       } catch (error) {
         setToast(error.message || 'Ayar kaydedilemedi');
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-setting-range]').forEach((range) => {
+    const path = range.dataset.settingRange;
+    const syncPreview = () => {
+      if (path === 'appearance.cornerRadius') {
+        const height = normalizeCompactHeight(appSettings.appearance.compactHeight);
+        const value = Math.min(normalizeCornerRadius(range.value), Math.floor(height / 2));
+        const output = document.getElementById('cornerRadiusValue');
+        if (output) {
+          output.textContent = String(value);
+        }
+        elements.notch.style.setProperty('--notch-radius', `${value}px`);
+        elements.notch.style.setProperty('--notch-radius-sm', `${value}px`);
+        document.querySelectorAll('.corner-radius-sample').forEach((sample) => {
+          sample.style.borderRadius = `${value}px`;
+        });
+        return;
+      }
+
+      if (path === 'appearance.compactWidth') {
+        const value = normalizeCompactWidth(range.value);
+        const output = document.getElementById('compactWidthValue');
+        if (output) {
+          output.textContent = String(value);
+        }
+        elements.notch.style.setProperty('--compact-width', `${value}px`);
+        document.querySelectorAll('.corner-radius-sample').forEach((sample) => {
+          sample.style.width = `${Math.min(220, value)}px`;
+        });
+        return;
+      }
+
+      if (path === 'appearance.compactHeight') {
+        const value = normalizeCompactHeight(range.value);
+        const output = document.getElementById('compactHeightValue');
+        if (output) {
+          output.textContent = String(value);
+        }
+        elements.notch.style.setProperty('--compact-height', `${value}px`);
+        const radius = Math.min(
+          normalizeCornerRadius(appSettings.appearance.cornerRadius),
+          Math.floor(value / 2)
+        );
+        elements.notch.style.setProperty('--notch-radius', `${radius}px`);
+        elements.notch.style.setProperty('--notch-radius-sm', `${radius}px`);
+        document.querySelectorAll('.corner-radius-sample').forEach((sample) => {
+          sample.style.height = `${value}px`;
+          sample.style.borderRadius = `${radius}px`;
+        });
+      }
+    };
+
+    range.addEventListener('input', syncPreview);
+    range.addEventListener('change', async () => {
+      try {
+        let value;
+        if (path === 'appearance.cornerRadius') {
+          value = Math.min(
+            normalizeCornerRadius(range.value),
+            Math.floor(normalizeCompactHeight(appSettings.appearance.compactHeight) / 2)
+          );
+        } else if (path === 'appearance.compactWidth') {
+          value = normalizeCompactWidth(range.value);
+        } else if (path === 'appearance.compactHeight') {
+          value = normalizeCompactHeight(range.value);
+        } else {
+          return;
+        }
+
+        const settings = await api.updateSettings({
+          appearance: {
+            notchStyle: appSettings.appearance.notchStyle,
+            cornerRadius: path === 'appearance.cornerRadius' ? value : appSettings.appearance.cornerRadius,
+            compactWidth: path === 'appearance.compactWidth' ? value : appSettings.appearance.compactWidth,
+            compactHeight: path === 'appearance.compactHeight' ? value : appSettings.appearance.compactHeight
+          }
+        });
+        applySettings(settings);
+      } catch (error) {
+        setToast(error.message || 'Boyut ayarı kaydedilemedi');
       }
     });
   });
@@ -3859,6 +4070,56 @@ function bindEvents() {
     const nav = event.target.closest('[data-settings-section]');
     if (nav) {
       showSettingsSection(nav.dataset.settingsSection);
+      return;
+    }
+
+    const saveButton = event.target.closest('[data-save-settings]');
+    if (saveButton) {
+      setToast('Ayarlar kaydedildi');
+      closeSettingsView();
+      return;
+    }
+
+    const darkThemeToggle = event.target.closest('[data-dark-theme-toggle]');
+    if (darkThemeToggle) {
+      try {
+        const current = appSettings.appearance.colorTheme || 'default';
+        const nextTheme = current === 'light'
+          ? (window.__lastDarkTheme || 'default')
+          : 'light';
+        if (current !== 'light') {
+          window.__lastDarkTheme = current;
+        }
+        const settings = await api.updateSettings(makePatch('appearance.colorTheme', nextTheme));
+        applySettings(settings);
+      } catch (error) {
+        setToast(error.message || 'Tema değiştirilemedi');
+      }
+      return;
+    }
+
+    const accentPreset = event.target.closest('[data-accent-preset]');
+    if (accentPreset) {
+      try {
+        const accent = accentPreset.dataset.accentPreset;
+        const colorTheme = appSettings.appearance.colorTheme || 'default';
+        const baseColors = colorTheme === 'custom'
+          ? appSettings.appearance.customTheme
+          : (THEME_PRESETS[colorTheme]?.colors || DEFAULT_CUSTOM_THEME);
+        const settings = await api.updateSettings({
+          appearance: {
+            colorTheme: 'custom',
+            customTheme: {
+              ...baseColors,
+              active: accent,
+              connected: accent
+            }
+          }
+        });
+        applySettings(settings);
+      } catch (error) {
+        setToast(error.message || 'Accent rengi kaydedilemedi');
+      }
       return;
     }
 

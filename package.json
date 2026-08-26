@@ -1,6 +1,6 @@
 {
   "name": "windows-notch-overlay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Electron-based dynamic notch overlay for Windows with quick controls, telemetry, alarms, search, and media state.",
   "main": "src/main/index.js",
   "scripts": {
