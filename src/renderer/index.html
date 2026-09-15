@@ -142,7 +142,7 @@
                 </svg>
               </button>
             </header>
-            <webview id="screenVideoView" class="screen-video-view" allowpopups></webview>
+            <webview id="screenVideoView" class="screen-video-view"></webview>
           </section>
           -->
 
@@ -400,7 +400,7 @@
             <div class="settings-scroll">
               <section class="settings-section settings-plain-section" data-section-panel="general">
                 <div class="settings-list">
-                  <div class="settings-row settings-row-stack">
+                  <div class="settings-row">
                     <div>
                       <strong>Dil</strong>
                       <span>Uygulama dilini seç.</span>
@@ -430,10 +430,51 @@
                   </div>
                   <div class="settings-row">
                     <div>
-                      <strong>Saydam üst şerit</strong>
-                      <span>Kapalı görünümde saat ve tarih arka planını hover dışındayken saydam tut.</span>
+                      <strong>Boşta saydamlaşma</strong>
+                      <span>Kapalı çentiği, üzerine gelinmediğinde belirli bir süre sonra saydamlaştır.</span>
                     </div>
-                    <button class="switch" data-setting-toggle="appearance.transparentCompactStrip" aria-label="Saydam üst şerit"></button>
+                    <button class="switch" data-setting-toggle="appearance.transparentCompactStrip" aria-label="Boşta saydamlaşma"></button>
+                  </div>
+                  <div class="settings-row" data-idle-transparency-option>
+                    <div>
+                      <strong>Saydamlaşma gecikmesi</strong>
+                      <span>Son hover hareketinden sonra ne kadar bekleneceğini seç.</span>
+                    </div>
+                    <select class="settings-select compact-select" data-setting-select="appearance.compactIdleDelaySeconds" aria-label="Saydamlaşma gecikmesi">
+                      <option value="3">3 saniye</option>
+                      <option value="5">5 saniye</option>
+                      <option value="10">10 saniye</option>
+                      <option value="30">30 saniye</option>
+                    </select>
+                  </div>
+                  <div class="settings-row settings-row-stack" data-idle-transparency-option>
+                    <div>
+                      <strong>Arka plan görünürlüğü</strong>
+                      <span>Düşük değer, çentiğin arkasındaki içeriğin daha net görünmesini sağlar.</span>
+                    </div>
+                    <div class="corner-radius-control">
+                      <span class="corner-radius-label">Daha saydam</span>
+                      <input
+                        id="compactIdleOpacityRange"
+                        class="corner-radius-range"
+                        type="range"
+                        min="20"
+                        max="80"
+                        step="5"
+                        value="45"
+                        data-setting-range="appearance.compactIdleOpacity"
+                        aria-label="Arka plan görünürlüğü"
+                      />
+                      <span class="corner-radius-label">Daha belirgin</span>
+                      <output id="compactIdleOpacityValue" class="corner-radius-value" for="compactIdleOpacityRange">45%</output>
+                    </div>
+                  </div>
+                  <div class="settings-row" data-idle-transparency-option>
+                    <div>
+                      <strong>Saat ve tarihi de saydamlaştır</strong>
+                      <span>Rakamları, çentik arka planıyla birlikte aynı görünürlük seviyesine indir.</span>
+                    </div>
+                    <button class="switch" data-setting-toggle="appearance.compactIdleFadeText" aria-label="Saat ve tarihi de saydamlaştır"></button>
                   </div>
                   <div class="settings-row">
                     <div>
@@ -850,7 +891,7 @@
                   <div class="settings-row">
                     <div>
                       <strong>Mikrofon kilidi</strong>
-                      <span>Varsayılan giriş aygıtına müdahale etmeden güvenli mikrofon durumunu yönetir.</span>
+                      <span>Uygulamada seçili mikrofonu Windows Kayıt aygıtlarında devre dışı bırakır veya etkinleştirir.</span>
                     </div>
                     <button data-action="microphone" class="inline-action">Değiştir</button>
                   </div>

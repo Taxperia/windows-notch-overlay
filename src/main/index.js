@@ -29,7 +29,6 @@ const {
 const {
   getBrightnessState,
   getControlState,
-  repairMicrophoneAccess,
   releaseMicrophoneMute,
   setBrightnessLevel,
   toggleBatterySaverState,
@@ -37,6 +36,7 @@ const {
   toggleDarkModeState,
   toggleNightLightState,
   togglePrivacyState,
+  toggleSelectedMicrophone,
   toggleSilentState
 } = require('./windowsControls');
 const {
@@ -81,6 +81,8 @@ let softwareDimmerEnabled = false;
 let softwareDimmerActive = false;
 let softwareBrightnessLevel = 100;
 let brightnessCache = { at: 0, value: null };
+let brightnessHardwareReadPromise = null;
+let brightnessHardwareOperation = Promise.resolve();
 let overlayMode = 'collapsed';
 let collapsedBounds = { ...COLLAPSED_BOUNDS };
 let currentNotchStyle = 'attached';
@@ -485,13 +487,29 @@ function deactivateSoftwareDimmer() {
   destroyDimmerWindow();
 }
 
+function queueHardwareBrightness(operation) {
+  const queued = brightnessHardwareOperation.then(operation, operation);
+  brightnessHardwareOperation = queued.catch(() => {});
+  return queued;
+}
+
+async function readHardwareBrightness() {
+  if (!brightnessHardwareReadPromise) {
+    brightnessHardwareReadPromise = queueHardwareBrightness(() => getBrightnessState())
+      .finally(() => {
+        brightnessHardwareReadPromise = null;
+      });
+  }
+  return brightnessHardwareReadPromise;
+}
+
 async function getEffectiveBrightnessState(options = {}) {
   const force = options.force === true;
   if (!force && brightnessCache.value && (Date.now() - brightnessCache.at) < BRIGHTNESS_CACHE_MS) {
     return brightnessCache.value;
   }
 
-  const hardware = await getBrightnessState();
+  const hardware = await readHardwareBrightness();
   if (hardware?.available && hardware?.writable !== false) {
     deactivateSoftwareDimmer();
     const next = {
@@ -540,18 +558,22 @@ async function setEffectiveBrightnessLevel(level) {
   const nextLevel = clampPercent(level, softwareBrightnessLevel);
   brightnessCache = { at: 0, value: null };
 
-  const hardware = await getBrightnessState();
-  if (hardware?.available && hardware?.writable !== false) {
-    const result = await setBrightnessLevel(nextLevel);
-    if (result?.ok) {
-      deactivateSoftwareDimmer();
-      const next = {
-        ...result,
-        mode: 'hardware'
-      };
-      brightnessCache = { at: Date.now(), value: next };
-      return next;
-    }
+  const hardwareOperation = queueHardwareBrightness(async () => {
+    const hardware = await getBrightnessState();
+    const result = hardware?.available && hardware?.writable !== false
+      ? await setBrightnessLevel(nextLevel)
+      : null;
+    return { hardware, result };
+  });
+  const { hardware, result } = await hardwareOperation;
+  if (result?.ok) {
+    deactivateSoftwareDimmer();
+    const next = {
+      ...result,
+      mode: 'hardware'
+    };
+    brightnessCache = { at: Date.now(), value: next };
+    return next;
   }
 
   if (!ALLOW_SOFTWARE_DIMMER_FALLBACK) {
@@ -592,7 +614,11 @@ async function setEffectiveBrightnessLevel(level) {
 }
 
 async function getPublishedControlState() {
-  const controls = await getControlState({ includeBrightness: false });
+  const settings = await loadSettings();
+  const controls = await getControlState({
+    includeBrightness: false,
+    microphoneSelection: settings.system
+  });
   try {
     const brightness = await getEffectiveBrightnessState();
     const isSoftware = brightness.mode === 'software';
@@ -616,10 +642,6 @@ async function getPublishedControlState() {
 
 function getMicrophoneGuardPath() {
   return path.join(app.getPath('userData'), 'microphone-muted-by-app');
-}
-
-function getMicrophoneRepairMarkerPath() {
-  return path.join(app.getPath('userData'), 'microphone-repair-v2');
 }
 
 function setMicrophoneGuard(active) {
@@ -655,21 +677,6 @@ function restoreMicrophoneMuteIfNeeded() {
   setMicrophoneGuard(false);
 }
 
-async function repairMicrophoneAccessOnce() {
-  const markerPath = getMicrophoneRepairMarkerPath();
-  if (fsSync.existsSync(markerPath)) {
-    return;
-  }
-
-  try {
-    await repairMicrophoneAccess();
-    fsSync.mkdirSync(path.dirname(markerPath), { recursive: true });
-    fsSync.writeFileSync(markerPath, String(Date.now()), 'utf8');
-  } catch {
-    // Best-effort migration for old builds that could leave capture endpoints muted.
-  }
-}
-
 function rendererPath() {
   return path.join(__dirname, '..', 'renderer', 'index.html');
 }
@@ -680,6 +687,13 @@ function loadRenderer(window, query = {}) {
       theme: overlayTheme,
       ...query
     }
+  });
+}
+
+function hardenRendererWindow(window) {
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
   });
 }
 
@@ -702,11 +716,12 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      webviewTag: true
+      sandbox: true,
+      webviewTag: ENABLE_SCREEN_VIDEO
     }
   });
 
+  hardenRendererWindow(mainWindow);
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   loadRenderer(mainWindow);
@@ -722,30 +737,6 @@ function createWindow() {
   });
 }
 
-const SETTINGS_THEME_PANELS = {
-  default: '#0a0c10',
-  slate: '#111827',
-  contrast: '#04080d',
-  light: '#f8fafc',
-  forest: '#07130f',
-  ruby: '#17070c'
-};
-
-function settingsWindowBackground(settings) {
-  const colorTheme = settings?.appearance?.colorTheme || 'default';
-  if (colorTheme === 'custom') {
-    return settings?.appearance?.customTheme?.panel || SETTINGS_THEME_PANELS.default;
-  }
-  return SETTINGS_THEME_PANELS[colorTheme] || SETTINGS_THEME_PANELS.default;
-}
-
-function syncSettingsWindowChrome(settings) {
-  if (!settingsWindow || settingsWindow.isDestroyed()) {
-    return;
-  }
-  settingsWindow.setBackgroundColor(settingsWindowBackground(settings));
-}
-
 async function createSettingsWindow() {
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.show();
@@ -753,7 +744,6 @@ async function createSettingsWindow() {
     return settingsWindow;
   }
 
-  const settings = await loadSettings();
   settingsWindow = new BrowserWindow({
     width: 860,
     height: 640,
@@ -761,22 +751,25 @@ async function createSettingsWindow() {
     minHeight: 560,
     frame: false,
     autoHideMenuBar: true,
-    transparent: false,
-    backgroundColor: settingsWindowBackground(settings),
+    transparent: true,
+    backgroundColor: '#00000000',
     resizable: true,
     maximizable: false,
     fullscreenable: false,
+    hasShadow: false,
+    thickFrame: false,
     show: false,
     title: 'Ayarlar',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-      webviewTag: true
+      sandbox: true,
+      webviewTag: ENABLE_SCREEN_VIDEO
     }
   });
 
+  hardenRendererWindow(settingsWindow);
   settingsWindow.setMenuBarVisibility(false);
 
   loadRenderer(settingsWindow, { settingsWindow: '1' });
@@ -869,7 +862,7 @@ function setOverlayMode(nextMode) {
   const bounds = boundsForOverlayMode(nextMode);
 
   mainWindow.setBounds(getOverlayBounds(bounds), false);
-  mainWindow.webContents.send('overlay:mode', nextMode);
+  sendToWindow(mainWindow, 'overlay:mode', nextMode);
 }
 
 function applyRuntimeSettings(settings) {
@@ -900,18 +893,34 @@ function applyRuntimeSettings(settings) {
     overlayTheme = nextTheme;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.setBounds(getOverlayBounds(boundsForOverlayMode(overlayMode)), false);
-      mainWindow.webContents.send('settings:update', settings);
+      sendToWindow(mainWindow, 'settings:update', settings);
     }
   } else if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setBounds(getOverlayBounds(boundsForOverlayMode(overlayMode)), false);
   }
 }
 
+function sendToWindow(targetWindow, channel, payload) {
+  if (!targetWindow || targetWindow.isDestroyed()) {
+    return false;
+  }
+
+  const contents = targetWindow.webContents;
+  if (!contents || contents.isDestroyed() || contents.isCrashed()) {
+    return false;
+  }
+
+  try {
+    contents.send(channel, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function sendToRendererWindows(channel, payload) {
   [mainWindow, settingsWindow].forEach((window) => {
-    if (window && !window.isDestroyed()) {
-      window.webContents.send(channel, payload);
-    }
+    sendToWindow(window, channel, payload);
   });
 }
 
@@ -921,7 +930,7 @@ async function publishMetrics() {
   }
 
   const snapshot = await getSystemSnapshot();
-  mainWindow.webContents.send('metrics:update', snapshot);
+  sendToWindow(mainWindow, 'metrics:update', snapshot);
 }
 
 async function publishMedia() {
@@ -933,7 +942,7 @@ async function publishMedia() {
   const media = await getCurrentMedia({
     preferredSource: settings?.appearance?.mediaSource || 'spotify'
   });
-  mainWindow.webContents.send('media:update', media);
+  sendToWindow(mainWindow, 'media:update', media);
 }
 
 async function publishControls() {
@@ -942,12 +951,11 @@ async function publishControls() {
   }
 
   const controls = await getPublishedControlState();
-  mainWindow.webContents.send('controls:update', controls);
+  sendToWindow(mainWindow, 'controls:update', controls);
 }
 
 async function publishSettings() {
   const settings = await loadSettings();
-  syncSettingsWindowChrome(settings);
   sendToRendererWindows('settings:update', settings);
 }
 
@@ -1011,7 +1019,7 @@ async function publishNotifications() {
   notifications.forEach((notification) => knownNotificationIds.add(notificationId(notification)));
 
   if (newest) {
-    mainWindow.webContents.send('notifications:update', newest);
+    sendToWindow(mainWindow, 'notifications:update', newest);
   }
 }
 
@@ -1035,7 +1043,7 @@ async function publishIntegrationNotifications() {
   notifications.forEach((notification) => knownIntegrationNotificationIds.add(notification.id));
 
   if (newest) {
-    mainWindow.webContents.send('notifications:update', newest);
+    sendToWindow(mainWindow, 'notifications:update', newest);
   }
 }
 
@@ -1267,7 +1275,7 @@ async function showScreenVideo() {
   }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('screen-video:show-inline');
+    sendToWindow(mainWindow, 'screen-video:show-inline');
     return { ok: true, message: 'Video ana panelde açıldı.' };
   }
 
@@ -1276,7 +1284,7 @@ async function showScreenVideo() {
 
 function hideScreenVideo() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('screen-video:hide-inline');
+    sendToWindow(mainWindow, 'screen-video:hide-inline');
   }
 
   return { ok: true, message: 'Video kapatıldı.' };
@@ -1455,7 +1463,7 @@ function registerIpc() {
       : { appId, connected: false, account: '', hasAuth: false, disabled: true }
   ));
 
-  ipcMain.handle('brightness:get', () => getEffectiveBrightnessState({ force: true }));
+  ipcMain.handle('brightness:get', () => getEffectiveBrightnessState());
   ipcMain.handle('brightness:set', async (_event, level) => {
     const result = await setEffectiveBrightnessLevel(level);
     await publishControls();
@@ -1529,7 +1537,7 @@ function registerIpc() {
       preferredSource: settings?.appearance?.mediaSource || 'spotify'
     });
     if (media && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('media:update', media);
+      sendToWindow(mainWindow, 'media:update', media);
     } else {
       await publishMedia();
     }
@@ -1624,13 +1632,18 @@ function registerIpc() {
         return { ok: true, message: 'Kamera gizlilik durumu değiştirildi.' };
       case 'microphone':
         {
-          restoreMicrophoneMuteIfNeeded();
-          await repairMicrophoneAccess();
+          const settings = await loadSettings();
+          const result = await toggleSelectedMicrophone(settings.system);
+          if (result.ok && result.endpointId) {
+            await updateSettings({
+              system: {
+                microphoneEndpointId: result.endpointId
+              }
+            });
+            await publishSettings();
+          }
           await publishControls();
-          return {
-            ok: true,
-            message: 'Mikrofon erişimi açık tutuldu; uygulama mikrofonu kapatmıyor.'
-          };
+          return result;
         }
       case 'quit':
         app.quit();
@@ -1644,7 +1657,6 @@ function registerIpc() {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   restoreMicrophoneMuteIfNeeded();
-  await repairMicrophoneAccessOnce();
   applyRuntimeSettings(await loadSettings());
   registerIpc();
   createWindow();

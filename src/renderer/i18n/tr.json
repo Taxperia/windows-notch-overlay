@@ -40,7 +40,7 @@
   "featureHelp": {
     "focus-assist": "Odaklanma yardımı durumunu değiştirir.",
     "bluetooth": "Bluetooth radyo adaptörünü aç/kapatmayı dener.",
-    "microphone": "Mikrofon durumunu gösterir; tıklayınca sadece erişimi onarır.",
+    "microphone": "Ayarlarda seçili Windows kayıt aygıtını devre dışı bırakır veya etkinleştirir.",
     "camera": "Kamera gizlilik iznini değiştirir.",
     "screenshot-full": "Tam ekran görüntüsünü Resimler klasörüne kaydeder.",
     "volume-mixer": "Uygulama içi ses mikserini açar.",

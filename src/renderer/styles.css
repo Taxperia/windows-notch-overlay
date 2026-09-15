@@ -14,6 +14,7 @@
   --text: #ffffff;
   --muted: rgba(255, 255, 255, 0.68);
   --dim: rgba(255, 255, 255, 0.42);
+  --settings-radius: 20px;
 }
 
 * {
@@ -115,21 +116,26 @@ svg {
   opacity: 1;
   transition:
     opacity 120ms ease,
-    background 160ms ease,
-    border-color 160ms ease,
+    background 300ms ease,
+    border-color 300ms ease,
     border-radius 160ms ease,
     width 160ms ease,
     height 160ms ease;
 }
 
-.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool) .collapsed-strip {
-  border-color: transparent;
-  background: transparent;
+.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool):not(.is-alarm):not(.has-active-alarm):not(.has-notification):not(.has-integration-notification) .collapsed-strip {
+  border-color: color-mix(in srgb, var(--line) var(--compact-idle-opacity, 45%), transparent);
+  background: color-mix(in srgb, var(--panel) var(--compact-idle-opacity, 45%), transparent);
 }
 
-.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool) .time-compact,
-.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool) .date-compact {
+.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool):not(.is-alarm):not(.has-active-alarm):not(.has-notification):not(.has-integration-notification) .time-compact,
+.notch.has-transparent-compact-strip:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool):not(.is-alarm):not(.has-active-alarm):not(.has-notification):not(.has-integration-notification) .date-compact {
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.58);
+}
+
+.notch.has-transparent-compact-strip.fade-compact-strip-text:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool):not(.is-alarm):not(.has-active-alarm):not(.has-notification):not(.has-integration-notification) .time-compact,
+.notch.has-transparent-compact-strip.fade-compact-strip-text:not(.is-compact-strip-opaque):not(.is-expanded):not(.is-settings):not(.is-tool):not(.is-alarm):not(.has-active-alarm):not(.has-notification):not(.has-integration-notification) .date-compact {
+  opacity: var(--compact-idle-text-opacity, 0.45);
 }
 
 .notch.has-content-extras .collapsed-strip {
@@ -188,6 +194,7 @@ svg {
   text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  transition: opacity 300ms ease;
 }
 
 .date-compact {
@@ -273,10 +280,12 @@ svg {
   width: 100%;
   height: 100%;
   max-width: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  border: 1px solid var(--line);
+  border-radius: var(--settings-radius);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
   overflow: hidden;
+  clip-path: inset(0 round var(--settings-radius));
+  isolation: isolate;
   background: var(--panel);
   transform: none;
 }
@@ -284,14 +293,14 @@ svg {
 .notch.is-standalone-settings .expanded-panel {
   width: 100%;
   height: 100%;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  border: 1px solid var(--line);
+  border-radius: var(--settings-radius);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
 }
 
 .notch.is-standalone-settings .settings-panel {
   border: 0;
-  border-radius: 0;
+  border-radius: calc(var(--settings-radius) - 1px);
   background: var(--panel);
 }
 
@@ -300,7 +309,8 @@ svg {
 }
 
 .notch.is-standalone-settings {
-  background: var(--panel);
+  border-radius: var(--settings-radius);
+  background: transparent;
 }
 
 .notch.is-media .expanded-panel {
@@ -376,15 +386,18 @@ svg {
   width: 100%;
   height: 100%;
   max-width: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  border: 1px solid var(--line);
+  border-radius: var(--settings-radius);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+  clip-path: inset(0 round var(--settings-radius));
+  isolation: isolate;
   transform: none;
   background: var(--panel);
 }
 
 .notch.is-settings .settings-panel {
-  border-radius: 0;
+  border-radius: calc(var(--settings-radius) - 1px);
   border: 0;
   width: 100%;
   height: 100%;
@@ -2046,7 +2059,7 @@ footer {
   grid-template-columns: 176px minmax(0, 1fr);
   overflow: hidden;
   border: 0;
-  border-radius: 0;
+  border-radius: calc(var(--settings-radius) - 1px);
   background: var(--panel);
   color: var(--text);
 }
@@ -2066,6 +2079,7 @@ footer {
   grid-template-rows: auto minmax(0, 1fr);
   padding: 16px 10px 12px;
   overflow: hidden;
+  border-radius: calc(var(--settings-radius) - 1px) 0 0 calc(var(--settings-radius) - 1px);
   border-right: 1px solid var(--line);
   background: var(--panel-2);
   -webkit-app-region: drag;
@@ -2141,6 +2155,7 @@ footer {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
+  border-radius: 0 calc(var(--settings-radius) - 1px) calc(var(--settings-radius) - 1px) 0;
   background: var(--panel);
 }
 
@@ -3184,26 +3199,38 @@ input.settings-search::placeholder {
   border-radius: 12px;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 8%, transparent);
+  align-self: center;
+  justify-self: center;
+}
+
+.settings-row.is-setting-disabled {
+  opacity: 0.5;
 }
 
 .about-action-icon svg {
   width: 18px;
   height: 18px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.about-action-card strong,
-.about-action-card span {
+.about-action-card > div > strong,
+.about-action-card > div > span {
   display: block;
   min-width: 0;
 }
 
-.about-action-card strong {
+.about-action-card > div > strong {
   color: var(--text);
   font-size: 13px;
   font-weight: 750;
 }
 
-.about-action-card span {
+.about-action-card > div > span {
   margin-top: 4px;
   color: var(--muted);
   font-size: 11px;

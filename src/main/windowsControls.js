@@ -7,7 +7,8 @@ const {
   getCaptureMuteState,
   getDefaultCaptureEndpointIds,
   setDefaultCaptureEndpoint,
-  setCaptureMuted
+  setCaptureMuted,
+  setEndpointVisible
 } = require('./coreAudio');
 const {
   getExternalBrightnessState,
@@ -36,6 +37,9 @@ const PRIVACY_CAPABILITIES = {
 const ENDPOINT_NAME_PROPERTY = '{b3f8fa53-0004-438e-9003-51a46e139bfc},6';
 const ENDPOINT_FORM_PROPERTY = '{a45c254e-df1c-4efd-8020-67d146a850e0},2';
 const DEVICE_STATE_ACTIVE = 0x1;
+const DEVICE_STATE_DISABLED = 0x2;
+const ENDPOINT_INFO_CACHE_MS = 5 * 60 * 1000;
+const endpointRegistryInfoCache = new Map();
 
 function run(command, args, timeoutMs = 3500) {
   return new Promise((resolve, reject) => {
@@ -521,6 +525,11 @@ function endpointRegistryKey(id) {
 }
 
 async function getEndpointRegistryInfo(id) {
+  const cached = endpointRegistryInfoCache.get(id);
+  if (cached && Date.now() - cached.at < ENDPOINT_INFO_CACHE_MS) {
+    return cached.value;
+  }
+
   const key = endpointRegistryKey(id);
   if (!key) {
     return {
@@ -535,10 +544,120 @@ async function getEndpointRegistryInfo(id) {
     readRegistryValue(key, ENDPOINT_FORM_PROPERTY)
   ]);
 
-  return {
+  const value = {
     id,
     name: name || '',
     form: form || ''
+  };
+  endpointRegistryInfoCache.set(id, { at: Date.now(), value });
+  return value;
+}
+
+function normalizeCaptureDeviceName(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('en-US')
+    .replace(/\(r\)|\(tm\)/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function captureDeviceNameScore(label, endpoint) {
+  const target = normalizeCaptureDeviceName(label);
+  const displayName = normalizeCaptureDeviceName(`${endpoint.form || ''} ${endpoint.name || ''}`);
+  if (!target || !displayName) {
+    return 0;
+  }
+  if (target === displayName) {
+    return 1;
+  }
+  if (target.includes(displayName) || displayName.includes(target)) {
+    return 0.92;
+  }
+
+  const ignored = new Set([
+    'default', 'varsayilan', 'microphone', 'mikrofon', 'audio', 'device', 'aygit',
+    'input', 'giris', 'communications', 'iletisim'
+  ]);
+  const targetTokens = new Set(target.split(' ').filter((token) => token.length > 1 && !ignored.has(token)));
+  const endpointTokens = new Set(displayName.split(' ').filter((token) => token.length > 1 && !ignored.has(token)));
+  if (!targetTokens.size || !endpointTokens.size) {
+    return 0;
+  }
+
+  const overlap = [...targetTokens].filter((token) => endpointTokens.has(token)).length;
+  return overlap / Math.max(targetTokens.size, endpointTokens.size);
+}
+
+async function resolveSelectedCaptureEndpoint(selection = {}) {
+  const endpoints = enumerateCaptureEndpoints()
+    .filter((endpoint) => endpoint.state === DEVICE_STATE_ACTIVE || endpoint.state === DEVICE_STATE_DISABLED);
+  if (!endpoints.length) {
+    return null;
+  }
+
+  const rememberedId = String(selection.microphoneEndpointId || '').trim().toLowerCase();
+  if (rememberedId) {
+    const remembered = endpoints.find((endpoint) => endpoint.id.toLowerCase() === rememberedId);
+    if (remembered) {
+      const info = await getEndpointRegistryInfo(remembered.id);
+      return {
+        ...remembered,
+        ...info,
+        displayName: info.form && info.name ? `${info.form} (${info.name})` : (info.name || info.form || 'Seçili mikrofon')
+      };
+    }
+  }
+
+  const defaults = await Promise.resolve()
+    .then(() => getDefaultCaptureEndpointIds())
+    .catch(() => ({}));
+  const defaultIds = [defaults.communications, defaults.multimedia, defaults.console]
+    .filter(Boolean)
+    .map((id) => id.toLowerCase());
+
+  const selectedDeviceId = String(selection.microphoneDeviceId || 'default');
+  const selectedLabel = String(selection.microphoneDeviceLabel || '').trim();
+  if (selectedDeviceId === 'default') {
+    const defaultEndpoint = defaultIds
+      .map((id) => endpoints.find((endpoint) => endpoint.id.toLowerCase() === id))
+      .find(Boolean);
+    if (!defaultEndpoint) {
+      return null;
+    }
+    const info = await getEndpointRegistryInfo(defaultEndpoint.id);
+    return {
+      ...defaultEndpoint,
+      ...info,
+      displayName: info.form && info.name ? `${info.form} (${info.name})` : (info.name || info.form || 'Varsayılan mikrofon')
+    };
+  }
+  if (!selectedLabel) {
+    return null;
+  }
+
+  const enriched = await Promise.all(endpoints.map(async (endpoint) => ({
+    ...endpoint,
+    ...(await getEndpointRegistryInfo(endpoint.id))
+  })));
+  const ranked = enriched
+    .map((endpoint) => ({
+      endpoint,
+      score: captureDeviceNameScore(selectedLabel, endpoint)
+        + (defaultIds.includes(endpoint.id.toLowerCase()) ? 0.02 : 0)
+    }))
+    .sort((left, right) => right.score - left.score);
+  if (!ranked[0] || ranked[0].score < 0.5) {
+    return null;
+  }
+
+  const endpoint = ranked[0].endpoint;
+  return {
+    ...endpoint,
+    displayName: endpoint.form && endpoint.name
+      ? `${endpoint.form} (${endpoint.name})`
+      : (endpoint.name || endpoint.form || selectedLabel)
   };
 }
 
@@ -589,7 +708,37 @@ async function getAudioCaptureState() {
   };
 }
 
-async function getMicrophoneState() {
+async function getMicrophoneState(selection = null) {
+  if (selection) {
+    try {
+      const endpoint = await resolveSelectedCaptureEndpoint(selection);
+      if (!endpoint) {
+        return {
+          enabled: null,
+          label: 'Bulunamadı',
+          detail: 'Ayarlarda seçili mikrofon Windows Kayıt aygıtlarıyla eşleştirilemedi.',
+          source: 'Windows Kayıt aygıtı'
+        };
+      }
+
+      const enabled = endpoint.state === DEVICE_STATE_ACTIVE;
+      return {
+        enabled,
+        label: enabled ? 'Açık' : 'Kapalı',
+        detail: endpoint.displayName,
+        source: 'Windows Kayıt aygıtı',
+        endpointId: endpoint.id
+      };
+    } catch (error) {
+      return {
+        enabled: null,
+        label: 'Bilinmiyor',
+        detail: error.message || 'Seçili mikrofon durumu okunamadı.',
+        source: 'Windows Kayıt aygıtı'
+      };
+    }
+  }
+
   const [privacy, capture] = await Promise.all([
     getPrivacyState('microphone'),
     getAudioCaptureState()
@@ -613,6 +762,43 @@ async function getMicrophoneState() {
     detail: capture.detail,
     source: 'Core Audio + Windows gizlilik'
   };
+}
+
+async function toggleSelectedMicrophone(selection = {}) {
+  const endpoint = await resolveSelectedCaptureEndpoint(selection);
+  if (!endpoint) {
+    return {
+      ok: false,
+      message: 'Ayarlarda seçili mikrofon Windows Kayıt aygıtlarıyla eşleştirilemedi.'
+    };
+  }
+  if (endpoint.state !== DEVICE_STATE_ACTIVE && endpoint.state !== DEVICE_STATE_DISABLED) {
+    return {
+      ok: false,
+      endpointId: endpoint.id,
+      message: `${endpoint.displayName} şu anda bağlı değil.`
+    };
+  }
+
+  const enable = endpoint.state !== DEVICE_STATE_ACTIVE;
+  try {
+    setEndpointVisible(endpoint.id, enable);
+    return {
+      ok: true,
+      enabled: enable,
+      endpointId: endpoint.id,
+      deviceName: endpoint.displayName,
+      message: enable
+        ? `${endpoint.displayName} etkinleştirildi.`
+        : `${endpoint.displayName} devre dışı bırakıldı.`
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      endpointId: endpoint.id,
+      message: error.message || `${endpoint.displayName} durumu değiştirilemedi.`
+    };
+  }
 }
 
 function releaseMicrophoneMute() {
@@ -1280,7 +1466,7 @@ async function getControlState(options = {}) {
   const includeBrightness = options.includeBrightness !== false;
   const tasks = [
     getPrivacyState('camera'),
-    getMicrophoneState(),
+    getMicrophoneState(options.microphoneSelection || null),
     getBluetoothState(),
     getSilentState(),
     getDarkModeState(),
@@ -1332,6 +1518,7 @@ module.exports = {
   toggleBluetoothRadio,
   toggleDarkModeState,
   toggleMicrophoneState,
+  toggleSelectedMicrophone,
   toggleNightLightState,
   togglePrivacyState,
   toggleSilentState

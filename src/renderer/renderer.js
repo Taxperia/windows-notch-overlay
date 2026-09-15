@@ -415,6 +415,9 @@ const DEFAULT_SETTINGS = {
     settingsMode: 'advanced',
     mediaSource: 'spotify',
     transparentCompactStrip: false,
+    compactIdleDelaySeconds: 5,
+    compactIdleOpacity: 45,
+    compactIdleFadeText: false,
     alarmTone: 'classic',
     colorTheme: 'default',
     customTheme: DEFAULT_CUSTOM_THEME,
@@ -430,6 +433,8 @@ const DEFAULT_SETTINGS = {
     weatherCity: 'Istanbul',
     settingsOpenMode: 'overlay',
     microphoneDeviceId: 'default',
+    microphoneDeviceLabel: '',
+    microphoneEndpointId: '',
     cameraDeviceId: 'default',
     screenVideo: {
       enabled: false,
@@ -461,7 +466,7 @@ const DEFAULT_SETTINGS = {
 const FEATURE_HELP = {
   'focus-assist': 'Odaklanma yardımı durumunu değiştirir.',
   bluetooth: 'Bluetooth adaptörünü aç/kapatmayı dener.',
-  microphone: 'Mikrofon durumunu gösterir; tıklayınca sadece erişimi onarır.',
+  microphone: 'Ayarlarda seçili Windows kayıt aygıtını devre dışı bırakır veya etkinleştirir.',
   camera: 'Kamera gizlilik iznini değiştirir.',
   'screenshot-full': 'Tam ekran görüntüsünü Resimler klasörüne kaydeder.',
   'volume-mixer': 'Uygulama içi ses mikserini açar.',
@@ -492,6 +497,7 @@ let suppressMenuClick = false;
 let isSettingsOpen = false;
 let isToolOpen = false;
 let activeToolView = '';
+let activeSettingsSection = 'general';
 let appSettings = normalizeSettings(null);
 let lastControlState = null;
 let lastMediaState = null;
@@ -557,6 +563,22 @@ function normalizeCompactHeight(value) {
   return Math.max(28, Math.min(52, Math.round(next)));
 }
 
+function normalizeCompactIdleDelay(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return DEFAULT_SETTINGS.appearance.compactIdleDelaySeconds;
+  }
+  return Math.max(1, Math.min(60, Math.round(next)));
+}
+
+function normalizeCompactIdleOpacity(value) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) {
+    return DEFAULT_SETTINGS.appearance.compactIdleOpacity;
+  }
+  return Math.max(20, Math.min(80, Math.round(next / 5) * 5));
+}
+
 function normalizeNotchAppearance(appearance) {
   let notchStyle = appearance.notchStyle;
   const hasExplicitRadius = appearance.cornerRadius !== undefined && appearance.cornerRadius !== null && appearance.cornerRadius !== '';
@@ -595,6 +617,8 @@ function normalizeSettings(settings) {
   appearance.cornerRadius = migrated.cornerRadius;
   appearance.compactWidth = migrated.compactWidth;
   appearance.compactHeight = migrated.compactHeight;
+  appearance.compactIdleDelaySeconds = normalizeCompactIdleDelay(appearance.compactIdleDelaySeconds);
+  appearance.compactIdleOpacity = normalizeCompactIdleOpacity(appearance.compactIdleOpacity);
   const system = {
     ...DEFAULT_SETTINGS.system,
     ...(settings?.system || {})
@@ -713,6 +737,9 @@ function applyTheme() {
   elements.notch.style.setProperty('--notch-radius-sm', `${Math.min(cornerRadius, Math.floor(compactHeight / 2))}px`);
   elements.notch.style.setProperty('--compact-width', `${compactWidth}px`);
   elements.notch.style.setProperty('--compact-height', `${compactHeight}px`);
+  const compactIdleOpacity = normalizeCompactIdleOpacity(appSettings.appearance.compactIdleOpacity);
+  elements.notch.style.setProperty('--compact-idle-opacity', `${compactIdleOpacity}%`);
+  elements.notch.style.setProperty('--compact-idle-text-opacity', String(compactIdleOpacity / 100));
   const themeTokens = {
     '--panel': hexToRgba(colors.panel, colorTheme === 'light' ? 0.98 : 0.985),
     '--panel-2': hexToRgba(colors.surface, colorTheme === 'light' ? 0.94 : 0.92),
@@ -757,6 +784,11 @@ function applyTheme() {
   syncRange('cornerRadiusRange', 'cornerRadiusValue', cornerRadius);
   syncRange('compactWidthRange', 'compactWidthValue', compactWidth);
   syncRange('compactHeightRange', 'compactHeightValue', compactHeight);
+  syncRange('compactIdleOpacityRange', 'compactIdleOpacityValue', compactIdleOpacity);
+  const compactIdleOpacityOutput = document.getElementById('compactIdleOpacityValue');
+  if (compactIdleOpacityOutput) {
+    compactIdleOpacityOutput.textContent = `${compactIdleOpacity}%`;
+  }
   document.querySelectorAll('.corner-radius-sample').forEach((sample) => {
     sample.style.borderRadius = `${cornerRadius}px`;
     sample.style.width = `${Math.min(220, compactWidth)}px`;
@@ -788,9 +820,19 @@ function setToast(message) {
 function syncCompactStripTransparency() {
   const enabled = appSettings.appearance.transparentCompactStrip === true && !IS_STANDALONE_SETTINGS_WINDOW;
   elements.notch.classList.toggle('has-transparent-compact-strip', enabled);
+  elements.notch.classList.toggle(
+    'fade-compact-strip-text',
+    enabled && appSettings.appearance.compactIdleFadeText === true
+  );
   if (!enabled) {
     clearTimeout(stripTransparencyTimer);
     elements.notch.classList.remove('is-compact-strip-opaque');
+    return;
+  }
+
+  revealCompactStrip();
+  if (!elements.notch.matches(':hover')) {
+    scheduleCompactStripTransparency();
   }
 }
 
@@ -810,8 +852,11 @@ function scheduleCompactStripTransparency() {
 
   clearTimeout(stripTransparencyTimer);
   stripTransparencyTimer = setTimeout(() => {
+    if (elements.notch.matches(':hover') || isSettingsOpen || isToolOpen || activeToolView) {
+      return;
+    }
     elements.notch.classList.remove('is-compact-strip-opaque');
-  }, 3000);
+  }, normalizeCompactIdleDelay(appSettings.appearance.compactIdleDelaySeconds) * 1000);
 }
 
 function notificationText(notification) {
@@ -1584,13 +1629,21 @@ function renderDeviceOptions(devices = []) {
   const cameras = devices.filter((device) => device.kind === 'videoinput');
 
   if (elements.microphoneSelect) {
-    elements.microphoneSelect.innerHTML = [
+    const selectedId = appSettings.system.microphoneDeviceId || 'default';
+    const selectedLabel = String(appSettings.system.microphoneDeviceLabel || '').trim();
+    const microphoneOptions = [
       '<option value="default">Varsayılan mikrofon</option>',
       ...microphones.map((device, index) => (
         `<option value="${escapeHtml(device.deviceId)}">${escapeHtml(device.label || `Mikrofon ${index + 1}`)}</option>`
       ))
-    ].join('');
-    elements.microphoneSelect.value = appSettings.system.microphoneDeviceId || 'default';
+    ];
+    if (selectedId !== 'default' && !microphones.some((device) => device.deviceId === selectedId)) {
+      microphoneOptions.push(
+        `<option value="${escapeHtml(selectedId)}">${escapeHtml(selectedLabel || 'Seçili mikrofon')} (devre dışı)</option>`
+      );
+    }
+    elements.microphoneSelect.innerHTML = microphoneOptions.join('');
+    elements.microphoneSelect.value = selectedId;
   }
 
   if (elements.cameraSelect) {
@@ -1614,10 +1667,29 @@ async function refreshMediaDevices({ requestLabels = false } = {}) {
   try {
     let devices = await navigator.mediaDevices.enumerateDevices();
     const labelsHidden = devices.some((device) => !device.label);
-    if (requestLabels && labelsHidden && navigator.mediaDevices.getUserMedia) {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(() => null);
+    const needsSelectedMicrophoneLabel = appSettings.system.microphoneDeviceId !== 'default'
+      && !appSettings.system.microphoneDeviceLabel;
+    if ((requestLabels || needsSelectedMicrophoneLabel) && labelsHidden && navigator.mediaDevices.getUserMedia) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: requestLabels
+      }).catch(() => null);
       stream?.getTracks?.().forEach((track) => track.stop());
       devices = await navigator.mediaDevices.enumerateDevices();
+    }
+    const selectedMicrophone = devices.find((device) => (
+      device.kind === 'audioinput'
+      && device.deviceId === appSettings.system.microphoneDeviceId
+      && device.label
+    ));
+    if (selectedMicrophone && !appSettings.system.microphoneDeviceLabel) {
+      const settings = await api.updateSettings({
+        system: {
+          microphoneDeviceLabel: selectedMicrophone.label,
+          microphoneEndpointId: ''
+        }
+      });
+      applySettings(settings);
     }
     renderDeviceOptions(devices);
   } finally {
@@ -1685,6 +1757,14 @@ function applySettings(settings, options = {}) {
 
   document.querySelectorAll('[data-setting-select]').forEach((select) => {
     select.value = readPath(appSettings, select.dataset.settingSelect) || select.value;
+  });
+
+  const idleTransparencyEnabled = appSettings.appearance.transparentCompactStrip === true;
+  document.querySelectorAll('[data-idle-transparency-option]').forEach((node) => {
+    node.classList.toggle('is-setting-disabled', !idleTransparencyEnabled);
+    node.querySelectorAll('input, select, button').forEach((control) => {
+      control.disabled = !idleTransparencyEnabled;
+    });
   });
 
   document.querySelectorAll('[data-advanced-setting]').forEach((node) => {
@@ -2310,7 +2390,8 @@ async function refreshBrightness() {
 
   const state = await api.getBrightness();
   const available = state?.available === true;
-  const level = Math.max(0, Math.min(100, Number(state?.level ?? 100) || 100));
+  const rawLevel = Number(state?.level);
+  const level = Math.max(0, Math.min(100, Number.isFinite(rawLevel) ? rawLevel : 100));
   elements.brightnessSlider.disabled = !available;
   elements.brightnessSlider.value = String(level);
   elements.brightnessSlider.setAttribute('aria-valuenow', String(level));
@@ -2892,6 +2973,10 @@ function resetOverlayUiState() {
 
 function showSettingsSection(sectionName) {
   const selected = sectionName === 'home' ? 'general' : (sectionName || 'general');
+  activeSettingsSection = selected;
+  if (elements.settingsSearchInput) {
+    elements.settingsSearchInput.value = '';
+  }
   const titleMap = {
     general: t('settings.general', 'Genel'),
     content: t('settings.content', 'İndirmeler'),
@@ -2941,10 +3026,12 @@ function filterSettingsSearch() {
   });
 
   if (!hasQuery) {
-    const current = document.querySelector('.settings-nav.is-current')?.dataset.settingsSection || 'general';
     document.querySelectorAll('[data-section-panel]').forEach((panel) => {
-      panel.classList.toggle('is-visible', panel.dataset.sectionPanel === current);
+      panel.classList.toggle('is-visible', panel.dataset.sectionPanel === activeSettingsSection);
     });
+    elements.settingsHeading.textContent = activeSettingsSection === 'theme-custom'
+      ? 'Tema Özelleştir'
+      : (document.querySelector(`.settings-nav[data-settings-section="${activeSettingsSection}"] .settings-nav-label`)?.textContent || 'Ayarlar');
     return;
   }
 
@@ -3079,10 +3166,6 @@ async function runQuickAction(action) {
 function confirmPrivacyAction(action) {
   if (action === 'camera') {
     return window.confirm('Kamera gizlilik izni değiştirilecek. Devam edilsin mi?');
-  }
-
-  if (action === 'microphone') {
-    return window.confirm('Mikrofon güvenli modda yalnızca erişimi onarır; varsayılan mikrofonu kapatmaz veya değiştirmez. Devam edilsin mi?');
   }
 
   return true;
@@ -3889,7 +3972,10 @@ function bindEvents() {
   document.querySelectorAll('[data-setting-select]').forEach((select) => {
     select.addEventListener('change', async () => {
       try {
-        const settings = await api.updateSettings(makePatch(select.dataset.settingSelect, select.value));
+        const value = select.dataset.settingSelect === 'appearance.compactIdleDelaySeconds'
+          ? normalizeCompactIdleDelay(select.value)
+          : select.value;
+        const settings = await api.updateSettings(makePatch(select.dataset.settingSelect, value));
         applySettings(settings);
         if (select.dataset.settingSelect === 'appearance.mediaSource') {
           const media = await api.getMedia();
@@ -3952,6 +4038,17 @@ function bindEvents() {
           sample.style.height = `${value}px`;
           sample.style.borderRadius = `${radius}px`;
         });
+        return;
+      }
+
+      if (path === 'appearance.compactIdleOpacity') {
+        const value = normalizeCompactIdleOpacity(range.value);
+        const output = document.getElementById('compactIdleOpacityValue');
+        if (output) {
+          output.textContent = `${value}%`;
+        }
+        elements.notch.style.setProperty('--compact-idle-opacity', `${value}%`);
+        elements.notch.style.setProperty('--compact-idle-text-opacity', String(value / 100));
       }
     };
 
@@ -3968,21 +4065,25 @@ function bindEvents() {
           value = normalizeCompactWidth(range.value);
         } else if (path === 'appearance.compactHeight') {
           value = normalizeCompactHeight(range.value);
+        } else if (path === 'appearance.compactIdleOpacity') {
+          value = normalizeCompactIdleOpacity(range.value);
         } else {
           return;
         }
 
-        const settings = await api.updateSettings({
-          appearance: {
-            notchStyle: appSettings.appearance.notchStyle,
-            cornerRadius: path === 'appearance.cornerRadius' ? value : appSettings.appearance.cornerRadius,
-            compactWidth: path === 'appearance.compactWidth' ? value : appSettings.appearance.compactWidth,
-            compactHeight: path === 'appearance.compactHeight' ? value : appSettings.appearance.compactHeight
-          }
-        });
+        const settings = path === 'appearance.compactIdleOpacity'
+          ? await api.updateSettings(makePatch(path, value))
+          : await api.updateSettings({
+            appearance: {
+              notchStyle: appSettings.appearance.notchStyle,
+              cornerRadius: path === 'appearance.cornerRadius' ? value : appSettings.appearance.cornerRadius,
+              compactWidth: path === 'appearance.compactWidth' ? value : appSettings.appearance.compactWidth,
+              compactHeight: path === 'appearance.compactHeight' ? value : appSettings.appearance.compactHeight
+            }
+          });
         applySettings(settings);
       } catch (error) {
-        setToast(error.message || 'Boyut ayarı kaydedilemedi');
+        setToast(error.message || 'Görünüm ayarı kaydedilemedi');
       }
     });
   });
@@ -3997,7 +4098,16 @@ function bindEvents() {
 
   elements.microphoneSelect?.addEventListener('change', async () => {
     try {
-      await updateSetting('system.microphoneDeviceId', elements.microphoneSelect.value);
+      const selectedOption = elements.microphoneSelect.selectedOptions[0];
+      const isDefault = elements.microphoneSelect.value === 'default';
+      const settings = await api.updateSettings({
+        system: {
+          microphoneDeviceId: elements.microphoneSelect.value,
+          microphoneDeviceLabel: isDefault ? '' : String(selectedOption?.textContent || '').replace(/ \(devre dışı\)$/i, ''),
+          microphoneEndpointId: ''
+        }
+      });
+      applySettings(settings);
     } catch (error) {
       setToast(error.message || 'Mikrofon seçimi kaydedilemedi');
     }

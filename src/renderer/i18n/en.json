@@ -40,7 +40,7 @@
   "featureHelp": {
     "focus-assist": "Toggles focus assist state.",
     "bluetooth": "Toggles the Bluetooth radio adapter only.",
-    "microphone": "Shows microphone state; click only repairs access.",
+    "microphone": "Disables or enables the Windows recording device selected in settings.",
     "camera": "Changes the camera privacy permission.",
     "screenshot-full": "Saves a full-screen screenshot to Pictures.",
     "volume-mixer": "Opens the in-app per-application volume mixer.",

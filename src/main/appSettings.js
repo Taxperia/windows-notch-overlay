@@ -12,6 +12,9 @@ const DEFAULT_SETTINGS = Object.freeze({
     settingsMode: 'advanced',
     mediaSource: 'spotify',
     transparentCompactStrip: false,
+    compactIdleDelaySeconds: 5,
+    compactIdleOpacity: 45,
+    compactIdleFadeText: false,
     alarmTone: 'classic',
     colorTheme: 'default',
     customTheme: {
@@ -54,6 +57,8 @@ const DEFAULT_SETTINGS = Object.freeze({
     weatherCity: 'Istanbul',
     settingsOpenMode: 'overlay',
     microphoneDeviceId: 'default',
+    microphoneDeviceLabel: '',
+    microphoneEndpointId: '',
     cameraDeviceId: 'default',
     screenVideo: {
       enabled: false,
