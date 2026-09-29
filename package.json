@@ -38,7 +38,7 @@
     "form-data": "^4.0.6",
     "js-yaml": "^5.4.2",
     "tmp": "^0.2.7",
-    "undici": "^8.10.0"
+    "undici": "^8.11.2"
   },
   "build": {
     "appId": "com.local.windowsnotchoverlay",
