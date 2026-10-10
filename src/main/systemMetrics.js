@@ -2,6 +2,13 @@ const { execFile } = require('node:child_process');
 const os = require('node:os');
 const { getActiveWindowInfo } = require('./win32');
 
+const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
+const PROGRAM_FILES = process.env.ProgramFiles || 'C:\\Program Files';
+const NVIDIA_SMI_PATHS = [
+  `${SYSTEM_ROOT}\\System32\\nvidia-smi.exe`,
+  `${PROGRAM_FILES}\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe`
+];
+
 const KNOWN_GAME_PROCESSES = new Set([
   'cs2',
   'csgo',
@@ -118,11 +125,7 @@ async function getActiveWindow() {
 async function getNvidiaGpuStats() {
   try {
     const output = await runFirstAvailable(
-      [
-        'nvidia-smi.exe',
-        'C:\\Windows\\System32\\nvidia-smi.exe',
-        'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe'
-      ],
+      NVIDIA_SMI_PATHS,
       [
         '--query-gpu=name,utilization.gpu,temperature.gpu,memory.total',
         '--format=csv,noheader,nounits'

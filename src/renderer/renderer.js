@@ -661,12 +661,18 @@ function normalizeIntegrations(source) {
     return [app.id, {
       ...defaultIntegration,
       ...current,
+      accent: normalizeAccent(current.accent, defaultIntegration.accent),
       events: {
         ...defaultIntegration.events,
         ...(current.events && typeof current.events === 'object' ? current.events : {})
       }
     }];
   }));
+}
+
+function normalizeAccent(value, fallback = '#2563eb') {
+  const candidate = String(value || '').trim();
+  return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate : fallback;
 }
 
 function normalizeCustomTheme(theme) {
@@ -902,7 +908,7 @@ function renderNotification(notification) {
   elements.notch.classList.toggle('has-integration-notification', Boolean(integration?.id));
   if (integration?.id) {
     const settings = appSettings.integrations[integration.id];
-    elements.notch.style.setProperty('--notification-accent', settings?.accent || integration.accent || '#2563eb');
+    elements.notch.style.setProperty('--notification-accent', normalizeAccent(settings?.accent, integration.accent || '#2563eb'));
   }
 
   notificationTimer = setTimeout(() => {
@@ -1210,7 +1216,7 @@ function renderMenu() {
       ${page.map((item) => `
         <button class="menu-tile${item.active ? ' is-active' : ''}${item.disabled ? ' is-disabled' : ''}" data-action="${item.action}" data-state-key="${item.stateKey || ''}" ${item.disabled ? 'aria-disabled="true"' : ''}>
           <span class="tile-icon">${iconSvg(item.icon)}</span>
-          <span class="tile-label">${menuLabel(item)}</span>
+          <span class="tile-label">${escapeHtml(menuLabel(item))}</span>
           <span class="tile-state"></span>
         </button>
       `).join('')}
@@ -1231,10 +1237,10 @@ function renderFeatureSettings() {
       <article class="feature-card${enabled ? ' is-enabled' : ''}">
         <div class="feature-card-icon" aria-hidden="true">${iconSvg(item.icon)}</div>
         <div class="feature-card-copy">
-          <strong>${label}</strong>
-          <span>${help}</span>
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(help)}</span>
         </div>
-        <button class="switch${enabled ? ' is-on' : ''}" data-feature-toggle="${item.action}" aria-label="${label}"></button>
+        <button class="switch${enabled ? ' is-on' : ''}" data-feature-toggle="${escapeHtml(item.action)}" aria-label="${escapeHtml(label)}"></button>
       </article>
     `;
   }).join('');
@@ -1393,6 +1399,9 @@ function normalizeVideoUrl(value) {
 
   try {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    if (url.protocol !== 'https:') {
+      return '';
+    }
     if (/youtube\.com$/i.test(url.hostname) && url.pathname === '/watch' && url.searchParams.get('v')) {
       url.searchParams.set('autoplay', '1');
       return url.toString();
@@ -1404,7 +1413,7 @@ function normalizeVideoUrl(value) {
 
     return url.toString();
   } catch {
-    return raw;
+    return '';
   }
 }
 
@@ -2210,8 +2219,8 @@ function renderAlarmList() {
         <strong>${escapeHtml(alarm.name)}</strong>
         <span>${escapeHtml(alarmScheduleLabel(alarm))} - ${escapeHtml(repeatLabel(alarm.repeat))} - ${escapeHtml(formatAlarmDue(alarm.nextAt))}</span>
       </div>
-      <button class="switch${alarm.enabled ? ' is-on' : ''}" data-alarm-toggle="${alarm.id}" aria-label="${escapeHtml(alarm.name)}"></button>
-      <button class="inline-action danger" data-alarm-delete="${alarm.id}">Sil</button>
+      <button class="switch${alarm.enabled ? ' is-on' : ''}" data-alarm-toggle="${escapeHtml(alarm.id)}" aria-label="${escapeHtml(alarm.name)}"></button>
+      <button class="inline-action danger" data-alarm-delete="${escapeHtml(alarm.id)}">Sil</button>
     </div>
   `).join('');
 }
@@ -2221,7 +2230,8 @@ function escapeHtml(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function renderPomodoro() {

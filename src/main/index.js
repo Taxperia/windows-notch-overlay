@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { fileURLToPath } = require('node:url');
 const fsSync = require('node:fs');
 const fs = require('node:fs/promises');
 const https = require('node:https');
@@ -66,6 +67,26 @@ const OPEN_DEVTOOLS = process.argv.includes('--devtools');
 const ENABLE_EXTERNAL_INTEGRATIONS = false;
 const ENABLE_SCREEN_VIDEO = false;
 const DISMISSED_NOTIFICATION_LIMIT = 80;
+const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
+const SYSTEM32 = path.join(SYSTEM_ROOT, 'System32');
+const POWERSHELL_PATH = path.join(SYSTEM32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const NETSTAT_PATH = path.join(SYSTEM32, 'netstat.exe');
+const PING_PATH = path.join(SYSTEM32, 'ping.exe');
+const EXPLORER_PATH = path.join(SYSTEM_ROOT, 'explorer.exe');
+const UPDATE_JSON_HOSTS = new Set([
+  'api.github.com',
+  'github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com'
+]);
+const REQUEST_INTERVALS = Object.freeze({
+  updates: 5000,
+  weather: 2000,
+  screenshot: 3000,
+  cleanRam: 5000,
+  network: 3000,
+  clearCache: 5000
+});
 
 let mainWindow;
 let settingsWindow;
@@ -96,6 +117,12 @@ const knownIntegrationNotificationIds = new Set();
 const dismissedNotificationIds = new Set();
 let lastNetworkSample = null;
 let notificationHistory = [];
+const lastRendererRequestAt = new Map();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
 
 function isDetachedNotchStyle(style) {
   return ['floating', 'pill', 'compact'].includes(style);
@@ -177,8 +204,72 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function parseHttpsUrl(value) {
+  try {
+    const target = new URL(String(value || ''));
+    return target.protocol === 'https:' ? target : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedUpdateJsonUrl(value) {
+  const target = parseHttpsUrl(value);
+  return Boolean(target && UPDATE_JSON_HOSTS.has(target.hostname.toLowerCase()));
+}
+
+function isAllowedUpdateOpenUrl(value) {
+  const target = parseHttpsUrl(value);
+  if (!target || target.hostname.toLowerCase() !== 'github.com') {
+    return false;
+  }
+
+  const expectedPrefix = `/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/`.toLowerCase();
+  return target.pathname.toLowerCase().startsWith(expectedPrefix);
+}
+
+function allowedExternalTargets() {
+  return new Set([
+    'https://www.youtube.com/',
+    'https://music.youtube.com/',
+    'discord://-/channels/@me',
+    packageJson.homepage,
+    `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}`,
+    `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/latest`
+  ].filter(Boolean));
+}
+
+function isAllowedExternalTarget(value) {
+  const target = String(value || '').trim();
+  if (allowedExternalTargets().has(target)) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(target);
+    if (parsed.protocol === 'discord:' && target === 'discord://-/channels/@me') {
+      return true;
+    }
+    if (parsed.protocol !== 'https:') {
+      return false;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+    return host === 'www.youtube.com'
+      || host === 'music.youtube.com'
+      || (host === 'github.com' && parsed.pathname.toLowerCase().startsWith(`/${UPDATE_REPOSITORY.owner}/`.toLowerCase()));
+  } catch {
+    return false;
+  }
+}
+
 function requestJson(url, timeoutMs = 10000, redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (!isAllowedUpdateJsonUrl(url)) {
+      reject(new Error('Güncelleme sunucusu izin verilen listede değil.'));
+      return;
+    }
+
     const request = https.get(url, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -188,8 +279,14 @@ function requestJson(url, timeoutMs = 10000, redirectCount = 0) {
     }, (response) => {
       const redirect = response.headers.location;
       if ([301, 302, 307, 308].includes(response.statusCode) && redirect && redirectCount < 3) {
+        const nextUrl = new URL(redirect, url).toString();
+        if (!isAllowedUpdateJsonUrl(nextUrl)) {
+          response.resume();
+          reject(new Error('Güncelleme isteği izin verilmeyen bir sunucuya yönlendirildi.'));
+          return;
+        }
         response.resume();
-        resolve(requestJson(new URL(redirect, url).toString(), timeoutMs, redirectCount + 1));
+        resolve(requestJson(nextUrl, timeoutMs, redirectCount + 1));
         return;
       }
 
@@ -322,7 +419,7 @@ function weatherCodeLabel(code) {
 }
 
 async function getWeatherForCity(city) {
-  const query = String(city || 'Istanbul').trim() || 'Istanbul';
+  const query = String(city || 'Istanbul').trim().slice(0, 80) || 'Istanbul';
   const geocode = await requestWeatherJson(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=tr&format=json&name=${encodeURIComponent(query)}`);
   const place = geocode?.results?.[0];
   if (!place) {
@@ -696,6 +793,25 @@ function hardenRendererWindow(window) {
     event.preventDefault();
   });
 }
+
+function configureDefaultSessionSecurity() {
+  const currentSession = session.defaultSession;
+  currentSession.setPermissionCheckHandler(() => false);
+  currentSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  if (typeof currentSession.setDevicePermissionHandler === 'function') {
+    currentSession.setDevicePermissionHandler(() => false);
+  }
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (event) => event.preventDefault());
+  contents.on('will-attach-webview', (event) => {
+    if (!ENABLE_SCREEN_VIDEO) {
+      event.preventDefault();
+    }
+  });
+});
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -1142,7 +1258,7 @@ function parseCounterNumbers(value) {
 
 async function readDefaultAdapterByteTotals() {
   const script = "$route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric, InterfaceMetric | Select-Object -First 1; if ($route) { $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue; if ($adapter) { $stats = Get-NetAdapterStatistics -Name $adapter.Name -ErrorAction SilentlyContinue; if ($stats) { Write-Output ($stats.ReceivedBytes.ToString() + ',' + $stats.SentBytes.ToString()); exit 0 } } }; Write-Output ''";
-  const result = await execFileText('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 3500);
+  const result = await execFileText(POWERSHELL_PATH, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 3500);
   const numbers = parseCounterNumbers(result.stdout);
   return numbers.length >= 2
     ? { receivedBytes: numbers[0], sentBytes: numbers[1] }
@@ -1150,7 +1266,7 @@ async function readDefaultAdapterByteTotals() {
 }
 
 async function readNetstatByteTotals() {
-  const result = await execFileText('netstat.exe', ['-e']);
+  const result = await execFileText(NETSTAT_PATH, ['-e']);
   const line = result.stdout.split(/\r?\n/).find((entry) => /^\s*(Bytes|Bayt)\s+/i.test(entry))
     || result.stdout.split(/\r?\n/).find((entry) => (entry.match(/\d+/g) || []).length >= 2);
   const numbers = parseCounterNumbers(line);
@@ -1166,7 +1282,7 @@ async function readNetworkByteTotals() {
 }
 
 async function readPing() {
-  const result = await execFileText('ping.exe', ['-n', '1', '8.8.8.8']);
+  const result = await execFileText(PING_PATH, ['-n', '1', '8.8.8.8']);
   const match = result.stdout.match(/(?:time|sure|süre)[=<]\s*(\d+)\s*ms/i)
     || result.stdout.match(/Average\s*=\s*(\d+)ms/i)
     || result.stdout.match(/Ortalama\s*=\s*(\d+)ms/i);
@@ -1175,7 +1291,7 @@ async function readPing() {
 
 async function readHeadphoneBattery() {
   const script = "$devices = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Where-Object { (($_.Class -eq 'Bluetooth') -or ($_.Class -eq 'AudioEndpoint')) -and ($_.FriendlyName -match 'headphone|headset|buds|airpods|earbuds|kulak|jbl|sony|anker|soundcore|galaxy|xiaomi') }; foreach ($device in $devices) { $battery = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_Battery_Level' -ErrorAction SilentlyContinue; if ($battery -and $null -ne $battery.Data) { Write-Output ($battery.Data.ToString() + '%'); exit 0 } }; Write-Output '--'";
-  const result = await execFileText('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 5000);
+  const result = await execFileText(POWERSHELL_PATH, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 5000);
   const line = result.stdout.split(/\r?\n/).map((value) => value.trim()).find(Boolean);
   return line || '--';
 }
@@ -1220,17 +1336,9 @@ async function getNetworkExtras(options = {}) {
 }
 
 function searchTarget(query) {
-  const value = String(query || '').trim();
+  const value = String(query || '').trim().slice(0, 512);
   if (!value) {
     return '';
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    return value;
-  }
-
-  if (/^[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(value)) {
-    return `https://${value}`;
   }
 
   return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
@@ -1335,11 +1443,52 @@ function registerVideoShortcuts(settings) {
   });
 }
 
+function isTrustedRendererSender(event, options = {}) {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const allowedWindows = options.mainOnly ? [mainWindow] : [mainWindow, settingsWindow];
+  if (!owner || owner.isDestroyed() || !allowedWindows.includes(owner)) {
+    return false;
+  }
+
+  const frame = event.senderFrame;
+  if (!frame || frame !== event.sender.mainFrame) {
+    return false;
+  }
+
+  try {
+    return path.resolve(fileURLToPath(frame.url)) === path.resolve(rendererPath());
+  } catch {
+    return false;
+  }
+}
+
+function registerTrustedHandle(channel, listener, options = {}) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!isTrustedRendererSender(event, options)) {
+      throw new Error('Yetkisiz IPC isteği reddedildi.');
+    }
+    return listener(event, ...args);
+  });
+}
+
+function enforceRendererRateLimit(event, action, minimumIntervalMs) {
+  const key = `${event.sender.id}:${action}`;
+  const now = Date.now();
+  const previous = lastRendererRequestAt.get(key) || 0;
+  if ((now - previous) < minimumIntervalMs) {
+    throw new Error('Bu işlem çok sık istendi. Lütfen kısa bir süre bekleyin.');
+  }
+  lastRendererRequestAt.set(key, now);
+}
+
 function isMainWindowSender(event) {
-  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+  return isTrustedRendererSender(event, { mainOnly: true });
 }
 
 function closeWindowFromSender(event) {
+  if (!isTrustedRendererSender(event)) {
+    return;
+  }
   const owner = BrowserWindow.fromWebContents(event.sender);
   if (owner && !owner.isDestroyed()) {
     owner.close();
@@ -1392,20 +1541,20 @@ function registerIpc() {
   });
   ipcMain.on('window:close-current', closeWindowFromSender);
 
-  ipcMain.handle('metrics:get', () => getSystemSnapshot());
-  ipcMain.handle('media:get', async () => {
+  registerTrustedHandle('metrics:get', () => getSystemSnapshot());
+  registerTrustedHandle('media:get', async () => {
     const settings = await loadSettings();
     return getCurrentMedia({
       preferredSource: settings?.appearance?.mediaSource || 'spotify'
     });
   });
-  ipcMain.handle('controls:get', () => getPublishedControlState());
-  ipcMain.handle('settings:get', () => loadSettings());
-  ipcMain.handle('notifications:get', () => ({
+  registerTrustedHandle('controls:get', () => getPublishedControlState());
+  registerTrustedHandle('settings:get', () => loadSettings());
+  registerTrustedHandle('notifications:get', () => ({
     available: true,
     notifications: filterDismissedNotifications(notificationHistory)
   }));
-  ipcMain.handle('notifications:dismiss', (_event, id) => {
+  registerTrustedHandle('notifications:dismiss', (_event, id) => {
     rememberDismissedNotification(String(id || ''));
     notificationHistory = filterDismissedNotifications(notificationHistory);
     return {
@@ -1413,8 +1562,11 @@ function registerIpc() {
       notifications: notificationHistory
     };
   });
-  ipcMain.handle('weather:get', (_event, city) => getWeatherForCity(city));
-  ipcMain.handle('app:info', () => ({
+  registerTrustedHandle('weather:get', (event, city) => {
+    enforceRendererRateLimit(event, 'weather', REQUEST_INTERVALS.weather);
+    return getWeatherForCity(city);
+  });
+  registerTrustedHandle('app:info', () => ({
     name: packageJson.productName || packageJson.build?.productName || packageJson.name,
     version: packageJson.version,
     description: packageJson.description || '',
@@ -1422,19 +1574,23 @@ function registerIpc() {
     repositoryUrl: `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}`,
     releasesUrl: `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/latest`
   }));
-  ipcMain.handle('app:clear-cache', async () => {
+  registerTrustedHandle('app:clear-cache', async (event) => {
+    enforceRendererRateLimit(event, 'clear-cache', REQUEST_INTERVALS.clearCache);
     await session.defaultSession.clearCache();
     return { ok: true, message: 'Önbellek temizlendi.' };
   });
-  ipcMain.handle('system:ram-snapshot', () => memorySnapshot());
-  ipcMain.handle('system:clean-ram', () => cleanRam());
-  ipcMain.handle('settings:update', async (_event, patch) => {
+  registerTrustedHandle('system:ram-snapshot', () => memorySnapshot());
+  registerTrustedHandle('system:clean-ram', (event) => {
+    enforceRendererRateLimit(event, 'clean-ram', REQUEST_INTERVALS.cleanRam);
+    return cleanRam();
+  });
+  registerTrustedHandle('settings:update', async (_event, patch) => {
     const settings = await updateSettings(patch);
     applyRuntimeSettings(settings);
     await publishSettings();
     return settings;
   });
-  ipcMain.handle('integration:connect', async (_event, appId, credentials) => {
+  registerTrustedHandle('integration:connect', async (_event, appId, credentials) => {
     if (!ENABLE_EXTERNAL_INTEGRATIONS) {
       return { ok: false, message: 'Harici uygulamalar şimdilik devre dışı.' };
     }
@@ -1447,7 +1603,7 @@ function registerIpc() {
     }
     return result;
   });
-  ipcMain.handle('integration:disconnect', async (_event, appId) => {
+  registerTrustedHandle('integration:disconnect', async (_event, appId) => {
     if (!ENABLE_EXTERNAL_INTEGRATIONS) {
       return { ok: true, message: 'Harici uygulamalar şimdilik devre dışı.' };
     }
@@ -1457,27 +1613,27 @@ function registerIpc() {
     await publishSettings();
     return result;
   });
-  ipcMain.handle('integration:status', (_event, appId) => (
+  registerTrustedHandle('integration:status', (_event, appId) => (
     ENABLE_EXTERNAL_INTEGRATIONS
       ? getIntegrationAuthStatus(appId)
       : { appId, connected: false, account: '', hasAuth: false, disabled: true }
   ));
 
-  ipcMain.handle('brightness:get', () => getEffectiveBrightnessState());
-  ipcMain.handle('brightness:set', async (_event, level) => {
+  registerTrustedHandle('brightness:get', () => getEffectiveBrightnessState());
+  registerTrustedHandle('brightness:set', async (_event, level) => {
     const result = await setEffectiveBrightnessLevel(level);
     await publishControls();
     return result;
   });
-  ipcMain.handle('audio-mixer:get', () => getAudioSessions());
-  ipcMain.handle('audio-mixer:set-volume', async (_event, sessionId, volume) => {
+  registerTrustedHandle('audio-mixer:get', () => getAudioSessions());
+  registerTrustedHandle('audio-mixer:set-volume', async (_event, sessionId, volume) => {
     const result = setAudioSessionVolume(sessionId, volume);
     return {
       ...result,
       mixer: getAudioSessions()
     };
   });
-  ipcMain.handle('audio-mixer:set-muted', async (_event, sessionId, muted) => {
+  registerTrustedHandle('audio-mixer:set-muted', async (_event, sessionId, muted) => {
     const result = setAudioSessionMuted(sessionId, muted);
     return {
       ...result,
@@ -1485,14 +1641,17 @@ function registerIpc() {
     };
   });
 
-  ipcMain.handle('i18n:list', () => listLanguages());
-  ipcMain.handle('i18n:get', (_event, code) => getLanguage(code));
-  ipcMain.handle('updates:check', (_event, options) => checkForUpdates({
-    manual: options?.manual !== false
-  }));
-  ipcMain.handle('updates:open', async (_event, updateInfo) => {
-    const target = updateInfo?.downloadUrl || updateInfo?.releaseUrl || lastUpdateStatus?.downloadUrl || lastUpdateStatus?.releaseUrl;
-    if (!target) {
+  registerTrustedHandle('i18n:list', () => listLanguages());
+  registerTrustedHandle('i18n:get', (_event, code) => getLanguage(code));
+  registerTrustedHandle('updates:check', (event, options) => {
+    enforceRendererRateLimit(event, 'updates', REQUEST_INTERVALS.updates);
+    return checkForUpdates({
+      manual: options?.manual !== false
+    });
+  });
+  registerTrustedHandle('updates:open', async () => {
+    const target = lastUpdateStatus?.downloadUrl || lastUpdateStatus?.releaseUrl;
+    if (!target || !isAllowedUpdateOpenUrl(target)) {
       return { ok: false, message: 'Güncelleme bağlantısı yok.' };
     }
 
@@ -1500,24 +1659,17 @@ function registerIpc() {
     return { ok: true, message: 'Güncelleme sayfası açıldı.' };
   });
 
-  ipcMain.handle('external-app:open', async (_event, targetPath) => {
+  registerTrustedHandle('external-app:open', async (_event, targetPath) => {
     const target = String(targetPath || '').trim();
-    if (!target) {
-      return { ok: false, message: 'Hedef boş.' };
+    if (!isAllowedExternalTarget(target)) {
+      return { ok: false, message: 'Bu hedefe izin verilmiyor.' };
     }
 
-    if (/^(https?:|discord:|spotify:)/i.test(target)) {
-      await shell.openExternal(target);
-      return { ok: true, message: 'Hedef açıldı.' };
-    }
-
-    const message = await shell.openPath(target);
-    return message
-      ? { ok: false, message }
-      : { ok: true, message: 'Hedef açıldı.' };
+    await shell.openExternal(target);
+    return { ok: true, message: 'Hedef açıldı.' };
   });
 
-  ipcMain.handle('search:web', async (_event, query) => {
+  registerTrustedHandle('search:web', async (_event, query) => {
     const target = searchTarget(query);
     if (!target) {
       return { ok: false, message: 'Arama metni boş.' };
@@ -1526,12 +1678,15 @@ function registerIpc() {
     await shell.openExternal(target);
     return { ok: true, message: 'Tarayıcıda açıldı.' };
   });
-  ipcMain.handle('screen-video:show', () => showScreenVideo());
-  ipcMain.handle('screen-video:hide', () => hideScreenVideo());
-  ipcMain.handle('screen-video:toggle', () => toggleScreenVideo());
-  ipcMain.handle('extras:network', (_event, options) => getNetworkExtras(options));
+  registerTrustedHandle('screen-video:show', () => showScreenVideo());
+  registerTrustedHandle('screen-video:hide', () => hideScreenVideo());
+  registerTrustedHandle('screen-video:toggle', () => toggleScreenVideo());
+  registerTrustedHandle('extras:network', (event, options) => {
+    enforceRendererRateLimit(event, 'network', REQUEST_INTERVALS.network);
+    return getNetworkExtras(options);
+  });
 
-  ipcMain.handle('media:command', async (_event, command) => {
+  registerTrustedHandle('media:command', async (_event, command) => {
     const settings = await loadSettings();
     const media = await sendMediaCommand(command, {
       preferredSource: settings?.appearance?.mediaSource || 'spotify'
@@ -1544,14 +1699,15 @@ function registerIpc() {
     return { ok: true };
   });
 
-  ipcMain.handle('quick:action', async (_event, action) => {
+  registerTrustedHandle('quick:action', async (event, action) => {
     switch (action) {
       case 'screenshot-full': {
+        enforceRendererRateLimit(event, 'screenshot', REQUEST_INTERVALS.screenshot);
         const filePath = await takePrimaryScreenshot();
         return { ok: true, message: `Kaydedildi: ${filePath}`, filePath };
       }
       case 'screenshot-snip':
-        runDetached('explorer.exe', ['ms-screenclip:']);
+        runDetached(EXPLORER_PATH, ['ms-screenclip:']);
         return { ok: true, message: 'Ekran kırpma açıldı.' };
       case 'settings':
         await openSettingsByPreference();
@@ -1623,7 +1779,7 @@ function registerIpc() {
         await publishControls();
         return { ok: true, message: 'Güç tasarrufu eşiği değiştirildi.' };
       case 'network':
-        runDetached('explorer.exe', ['ms-availablenetworks:']);
+        runDetached(EXPLORER_PATH, ['ms-availablenetworks:']);
         await publishControls();
         return { ok: true, message: 'Ağ hızlı paneli açıldı.' };
       case 'camera':
@@ -1654,8 +1810,24 @@ function registerIpc() {
   });
 }
 
+app.on('second-instance', () => {
+  const target = settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : mainWindow;
+  if (target && !target.isDestroyed()) {
+    if (target.isMinimized()) {
+      target.restore();
+    }
+    target.show();
+    target.focus();
+  }
+});
+
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
+
   Menu.setApplicationMenu(null);
+  configureDefaultSessionSecurity();
   restoreMicrophoneMuteIfNeeded();
   applyRuntimeSettings(await loadSettings());
   registerIpc();

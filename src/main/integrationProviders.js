@@ -8,6 +8,7 @@ const {
 } = require('./integrationAuth');
 
 const GITHUB_API = 'https://api.github.com';
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 function requestJson(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -21,8 +22,14 @@ function requestJson(url, options = {}) {
       timeout: options.timeout || 10000
     }, (response) => {
       let raw = '';
+      let responseBytes = 0;
       response.setEncoding('utf8');
       response.on('data', (chunk) => {
+        responseBytes += Buffer.byteLength(chunk, 'utf8');
+        if (responseBytes > MAX_RESPONSE_BYTES) {
+          request.destroy(new Error('Entegrasyon yanıtı çok büyük.'));
+          return;
+        }
         raw += chunk;
       });
       response.on('end', () => {
@@ -128,9 +135,9 @@ async function connectIntegration(appId, credentials = {}) {
     };
   }
 
-  const token = String(credentials.token || '').trim();
-  if (!token) {
-    return { ok: false, message: 'GitHub token boş.' };
+  const token = String(credentials?.token || '').trim();
+  if (!token || token.length > 512) {
+    return { ok: false, message: 'GitHub token boş veya geçersiz uzunlukta.' };
   }
 
   const account = await verifyGitHubToken(token);

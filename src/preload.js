@@ -1,15 +1,27 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function subscribe(channel, callback) {
+  const listener = (_event, payload) => callback(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
+function subscribeSignal(channel, callback) {
+  const listener = () => callback();
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld('notch', {
-  onMetrics: (callback) => ipcRenderer.on('metrics:update', (_event, payload) => callback(payload)),
-  onMedia: (callback) => ipcRenderer.on('media:update', (_event, payload) => callback(payload)),
-  onControls: (callback) => ipcRenderer.on('controls:update', (_event, payload) => callback(payload)),
-  onSettings: (callback) => ipcRenderer.on('settings:update', (_event, payload) => callback(payload)),
-  onOverlayMode: (callback) => ipcRenderer.on('overlay:mode', (_event, payload) => callback(payload)),
-  onNotification: (callback) => ipcRenderer.on('notifications:update', (_event, payload) => callback(payload)),
-  onUpdateStatus: (callback) => ipcRenderer.on('updates:status', (_event, payload) => callback(payload)),
-  onScreenVideoShow: (callback) => ipcRenderer.on('screen-video:show-inline', () => callback()),
-  onScreenVideoHide: (callback) => ipcRenderer.on('screen-video:hide-inline', () => callback()),
+  onMetrics: (callback) => subscribe('metrics:update', callback),
+  onMedia: (callback) => subscribe('media:update', callback),
+  onControls: (callback) => subscribe('controls:update', callback),
+  onSettings: (callback) => subscribe('settings:update', callback),
+  onOverlayMode: (callback) => subscribe('overlay:mode', callback),
+  onNotification: (callback) => subscribe('notifications:update', callback),
+  onUpdateStatus: (callback) => subscribe('updates:status', callback),
+  onScreenVideoShow: (callback) => subscribeSignal('screen-video:show-inline', callback),
+  onScreenVideoHide: (callback) => subscribeSignal('screen-video:hide-inline', callback),
   getMetrics: () => ipcRenderer.invoke('metrics:get'),
   getMedia: () => ipcRenderer.invoke('media:get'),
   getControls: () => ipcRenderer.invoke('controls:get'),

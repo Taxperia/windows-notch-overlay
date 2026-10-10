@@ -21,8 +21,13 @@ const NIGHT_LIGHT_STATE_KEY = 'Software\\Microsoft\\Windows\\CurrentVersion\\Clo
 const NOTIFICATION_SETTINGS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings';
 const PERSONALIZE_SETTINGS = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize';
 const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
-const PNPUTIL_PATH = path.join(SYSTEM_ROOT, 'System32', 'pnputil.exe');
-const POWERSHELL_PATH = path.join(SYSTEM_ROOT, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const SYSTEM32 = path.join(SYSTEM_ROOT, 'System32');
+const PNPUTIL_PATH = path.join(SYSTEM32, 'pnputil.exe');
+const POWERSHELL_PATH = path.join(SYSTEM32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const REG_PATH = path.join(SYSTEM32, 'reg.exe');
+const POWERCFG_PATH = path.join(SYSTEM32, 'powercfg.exe');
+const WMIC_PATH = path.join(SYSTEM32, 'wbem', 'wmic.exe');
+const NETSH_PATH = path.join(SYSTEM32, 'netsh.exe');
 const NETWORK_INTERFACE_IGNORE = ['vethernet', 'tailscale', 'loopback', 'isatap', 'teredo'];
 const POWER_SAVER_SCHEME_GUID = 'a1841308-3541-4fab-bc81-f71556f20b4a';
 const BALANCED_SCHEME_GUID = '381b4222-f694-41f0-9685-ff5bb260df2e';
@@ -155,7 +160,7 @@ async function writeRegistryBinary(keyPath, valueName, data) {
 
 async function readRegistryValue(keyPath, valueName) {
   try {
-    const output = await run('reg.exe', ['query', keyPath, '/v', valueName]);
+    const output = await run(REG_PATH, ['query', keyPath, '/v', valueName]);
     const match = output.match(new RegExp(`${valueName}\\s+REG_\\w+\\s+(.+)`, 'i'));
     return match ? match[1].trim() : null;
   } catch {
@@ -164,11 +169,11 @@ async function readRegistryValue(keyPath, valueName) {
 }
 
 async function writeRegistryString(keyPath, valueName, value) {
-  await run('reg.exe', ['add', keyPath, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f']);
+  await run(REG_PATH, ['add', keyPath, '/v', valueName, '/t', 'REG_SZ', '/d', value, '/f']);
 }
 
 async function writeRegistryDword(keyPath, valueName, value) {
-  await run('reg.exe', ['add', keyPath, '/v', valueName, '/t', 'REG_DWORD', '/d', String(value), '/f']);
+  await run(REG_PATH, ['add', keyPath, '/v', valueName, '/t', 'REG_DWORD', '/d', String(value), '/f']);
 }
 
 function parseRegistryDword(value) {
@@ -187,7 +192,7 @@ function parseRegistryDword(value) {
 
 async function listRegistrySubkeys(keyPath) {
   try {
-    const output = await run('reg.exe', ['query', keyPath]);
+    const output = await run(REG_PATH, ['query', keyPath]);
     return output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -283,7 +288,7 @@ async function getBluetoothState() {
   }
 
   try {
-    const output = await run('pnputil.exe', ['/enum-devices', '/connected', '/class', 'Bluetooth']);
+    const output = await run(PNPUTIL_PATH, ['/enum-devices', '/connected', '/class', 'Bluetooth']);
     const devices = parsePnPDevices(output);
     const radioEnabled = devices.some((device) => device.status === 'Started');
     const connectedDevices = devices.filter(isUserBluetoothDevice);
@@ -385,7 +390,7 @@ async function getBluetoothRadioDevices() {
 
   for (const args of queries) {
     try {
-      const output = await run('pnputil.exe', args, 8000);
+      const output = await run(PNPUTIL_PATH, args, 8000);
       parsePnPDevices(output)
         .filter(isBluetoothRadioDevice)
         .forEach((device) => {
@@ -417,7 +422,10 @@ function isAdminRequiredError(error) {
 }
 
 function quoteCmdArg(value) {
-  return `"${String(value).replace(/"/g, '""')}"`;
+  const text = String(value);
+  return `"${text
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\+)$/g, '$1$1')}"`;
 }
 
 function runElevatedPnPSequence(command, devices) {
@@ -465,7 +473,7 @@ async function setPnPDevicesEnabled(devices, enabled) {
 
   for (const device of targetDevices) {
     try {
-      const output = await run('pnputil.exe', [command, device.instanceId], 10000);
+      const output = await run(PNPUTIL_PATH, [command, device.instanceId], 10000);
       assertPnPSuccess(output);
       changed.push(device);
     } catch (error) {
@@ -504,7 +512,7 @@ function isPnPDeviceDisabled(device) {
 
 async function getAudioCaptureDevices() {
   try {
-    const output = await run('pnputil.exe', ['/enum-devices', '/class', 'AudioEndpoint']);
+    const output = await run(PNPUTIL_PATH, ['/enum-devices', '/class', 'AudioEndpoint']);
     return parsePnPDevices(output).filter(isAudioCaptureDevice);
   } catch {
     return [];
@@ -967,7 +975,7 @@ async function getBatterySaverState() {
   }
 
   try {
-    const output = await run('powercfg.exe', ['/qh', 'SCHEME_CURRENT', 'SUB_ENERGYSAVER', 'ESBATTTHRESHOLD']);
+    const output = await run(POWERCFG_PATH, ['/qh', 'SCHEME_CURRENT', 'SUB_ENERGYSAVER', 'ESBATTTHRESHOLD']);
     const match = output.match(/Current DC Power Setting Index:\s*0x([0-9a-f]+)/i);
     const threshold = match ? Number.parseInt(match[1], 16) : null;
 
@@ -1000,33 +1008,33 @@ async function toggleBatterySaverState() {
     const activePlan = await getActivePowerScheme();
     if (isPowerSaverScheme(activePlan)) {
       const previousPlan = await readPreviousPowerPlan();
-      await run('powercfg.exe', ['/setactive', previousPlan || BALANCED_SCHEME_GUID], 8000);
+      await run(POWERCFG_PATH, ['/setactive', previousPlan || BALANCED_SCHEME_GUID], 8000);
       return getBatterySaverState();
     }
 
     await rememberPowerPlan(activePlan.guid);
-    await run('powercfg.exe', ['/setactive', POWER_SAVER_SCHEME_GUID], 8000);
+    await run(POWERCFG_PATH, ['/setactive', POWER_SAVER_SCHEME_GUID], 8000);
     return getBatterySaverState();
   }
 
   const current = await getBatterySaverState();
   const nextThreshold = current.enabled === true ? 20 : 100;
 
-  await run('powercfg.exe', [
+  await run(POWERCFG_PATH, [
     '/setdcvalueindex',
     'SCHEME_CURRENT',
     'SUB_ENERGYSAVER',
     'ESBATTTHRESHOLD',
     String(nextThreshold)
   ], 8000);
-  await run('powercfg.exe', ['/setactive', 'SCHEME_CURRENT'], 8000);
+  await run(POWERCFG_PATH, ['/setactive', 'SCHEME_CURRENT'], 8000);
 
   return getBatterySaverState();
 }
 
 async function hasSystemBattery() {
   try {
-    const output = await run('wmic.exe', ['path', 'Win32_Battery', 'get', 'BatteryStatus', '/value'], 4000);
+    const output = await run(WMIC_PATH, ['path', 'Win32_Battery', 'get', 'BatteryStatus', '/value'], 4000);
     return /BatteryStatus\s*=/i.test(output);
   } catch {
     return false;
@@ -1034,7 +1042,7 @@ async function hasSystemBattery() {
 }
 
 async function getActivePowerScheme() {
-  const output = await run('powercfg.exe', ['/getactivescheme'], 4000);
+  const output = await run(POWERCFG_PATH, ['/getactivescheme'], 4000);
   const match = output.match(/(?:GUID|Power Scheme GUID):\s*([0-9a-f-]+)\s*(?:\(([^)]+)\))?/i);
 
   return {
@@ -1076,7 +1084,7 @@ function isPhysicalNetworkInterface(name) {
 
 async function getNetworkState() {
   try {
-    const output = await run('netsh.exe', ['interface', 'show', 'interface']);
+    const output = await run(NETSH_PATH, ['interface', 'show', 'interface']);
     const interfaces = output
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -1237,7 +1245,7 @@ async function readWmiBrightnessLevel() {
         5000
       );
     } catch {
-      output = await run('wmic.exe', [
+      output = await run(WMIC_PATH, [
         '/namespace:\\\\root\\wmi',
         'path',
         'WmiMonitorBrightness',
@@ -1279,7 +1287,7 @@ async function setWmiBrightnessLevel(level) {
       8000
     );
   } catch {
-    await run('wmic.exe', [
+    await run(WMIC_PATH, [
       '/namespace:\\\\root\\wmi',
       'path',
       'WmiMonitorBrightnessMethods',

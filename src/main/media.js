@@ -3,6 +3,9 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { getWindowsByProcessName, sendVirtualKey } = require('./win32');
 
+const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
+const TASKLIST_PATH = path.join(SYSTEM_ROOT, 'System32', 'tasklist.exe');
+
 const MEDIA_KEYS = {
   previous: 0xB1,
   playPause: 0xB3,
@@ -127,6 +130,10 @@ async function sendWinRtMediaCommand(command, preferredSource = 'spotify') {
 }
 
 async function sendMediaCommand(command, options = {}) {
+  if (!['previous', 'playPause', 'next'].includes(command)) {
+    throw new Error('Geçersiz medya komutu.');
+  }
+
   try {
     const media = await sendWinRtMediaCommand(command, options.preferredSource);
     if (media) {
@@ -222,7 +229,7 @@ async function getCurrentMedia(options = {}) {
   try {
     const windows = getWindowsByProcessName('Spotify.exe');
     if (!windows.length) {
-      const output = await run('tasklist.exe', ['/fo', 'csv', '/fi', 'IMAGENAME eq Spotify.exe']);
+      const output = await run(TASKLIST_PATH, ['/fo', 'csv', '/fi', 'IMAGENAME eq Spotify.exe']);
       const isRunning = output
         .split(/\r?\n/)
         .map((line) => line.trim())
