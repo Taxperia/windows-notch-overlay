@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/Taxperia/windows-notch-overlay#readme",
   "dependencies": {
-    "koffi": "^2.16.1"
+    "koffi": "^3.3.2"
   },
   "devDependencies": {
     "electron": "^44.7.0",
