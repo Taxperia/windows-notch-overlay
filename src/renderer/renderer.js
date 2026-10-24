@@ -4,6 +4,15 @@ const elements = {
   alarmCompact: document.getElementById('alarmCompact'),
   alarmCompactName: document.getElementById('alarmCompactName'),
   alarmCompactTime: document.getElementById('alarmCompactTime'),
+  activityCompact: document.getElementById('activityCompact'),
+  activityIcon: document.getElementById('activityIcon'),
+  activityLabel: document.getElementById('activityLabel'),
+  activityMeter: document.getElementById('activityMeter'),
+  activityMeterFill: document.getElementById('activityMeterFill'),
+  activityValue: document.getElementById('activityValue'),
+  privacyDots: document.getElementById('privacyDots'),
+  privacyCameraDot: document.getElementById('privacyCameraDot'),
+  privacyMicrophoneDot: document.getElementById('privacyMicrophoneDot'),
   timeFull: document.getElementById('timeFull'),
   dateFull: document.getElementById('dateFull'),
   contentExtras: document.getElementById('contentExtras'),
@@ -139,6 +148,8 @@ const api = window.notch || {
   onOverlayMode: () => {},
   onNotification: () => {},
   onUpdateStatus: () => {},
+  onActivity: () => {},
+  getPrivacyState: async () => null,
   onScreenVideoShow: () => {},
   onScreenVideoHide: () => {},
   showSettings: () => {},
@@ -215,8 +226,22 @@ const ICONS = {
   cloudSun: '<path d="M12 2v2M5.2 5.2l1.4 1.4M2 12h2M18.4 6.6l1.4-1.4"/><path d="M17 18a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6 1.7A3.5 3.5 0 0 0 7.5 18H17Z"/>',
   listBell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/><path d="M3 3h2M3 7h1M20 3h1M20 7h1"/>',
   apps: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
-  memory: '<path d="M6 7h12v10H6z"/><path d="M9 7V5M12 7V5M15 7V5M9 19v-2M12 19v-2M15 19v-2"/>'
+  memory: '<path d="M6 7h12v10H6z"/><path d="M9 7V5M12 7V5M15 7V5M9 19v-2M12 19v-2M15 19v-2"/>',
+  volumeMuted: '<path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="m16 9 6 6M22 9l-6 6"/>',
+  headphones: '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3ZM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z"/>',
+  charging: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/>',
+  batteryLow: '<rect x="2" y="7" width="17" height="10" rx="2"/><path d="M22 11v2M6 10v4"/>',
+  unplugged: '<path d="M12 22v-5M9 8V2M15 8V2"/><path d="M18 8v5a6 6 0 0 1-12 0V8Z"/>'
 };
+
+const ACTIVITY_DISPLAY_MS = Object.freeze({
+  volume: 1600,
+  brightness: 1600,
+  'audio-output': 3600,
+  power: 3200,
+  'battery-low': 5000,
+  privacy: 3600
+});
 
 const MENU_ITEMS = [
   { label: 'Odaklanma yardımı', labelKey: 'menu.focus-assist', icon: 'bell', action: 'focus-assist', stateKey: 'silent' },
@@ -454,6 +479,13 @@ const DEFAULT_SETTINGS = {
     showPing: false,
     showHeadphoneBattery: false
   },
+  liveActivities: {
+    volume: true,
+    brightness: true,
+    audioOutput: true,
+    power: true,
+    privacy: true
+  },
   integrations: Object.fromEntries(EXTERNAL_APPS.map((app) => [app.id, {
     connected: false,
     accent: app.accent || '#2563eb',
@@ -487,9 +519,14 @@ const FEATURE_HELP = {
 };
 
 let collapseTimer;
+let overlayModeState = 'collapsed';
+let resetStripPointer = () => {};
 let toastTimer;
 let expandTimer;
 let notificationTimer;
+let activityTimer;
+let activeActivity = null;
+let privacyState = { camera: [], microphone: [] };
 let stripTransparencyTimer;
 let menuReorderScrollTimer;
 let dragState = null;
@@ -640,6 +677,10 @@ function normalizeSettings(settings) {
       ...DEFAULT_SETTINGS.content,
       ...(settings?.content || {})
     },
+    liveActivities: {
+      ...DEFAULT_SETTINGS.liveActivities,
+      ...(settings?.liveActivities || {})
+    },
     integrations,
     features: {
       ...DEFAULT_SETTINGS.features,
@@ -764,17 +805,10 @@ function applyTheme() {
     document.documentElement.style.setProperty(name, value);
   });
   document.documentElement.style.colorScheme = colorTheme === 'light' ? 'light' : 'dark';
-  // Overlay penceresi şeffaf kalmalı; panel rengi sadece ayrı ayarlar penceresinde boyanır.
-  if (IS_STANDALONE_SETTINGS_WINDOW) {
-    document.documentElement.style.background = colors.panel;
-    if (document.body) {
-      document.body.style.background = colors.panel;
-    }
-  } else {
-    document.documentElement.style.background = 'transparent';
-    if (document.body) {
-      document.body.style.background = 'transparent';
-    }
+  // Her iki pencere de şeffaf; boyanan body yuvarlatılmış köşelerin arkasında köşeli bir zemin bırakır.
+  document.documentElement.style.background = 'transparent';
+  if (document.body) {
+    document.body.style.background = 'transparent';
   }
 
   const syncRange = (id, valueId, value) => {
@@ -858,7 +892,7 @@ function scheduleCompactStripTransparency() {
 
   clearTimeout(stripTransparencyTimer);
   stripTransparencyTimer = setTimeout(() => {
-    if (elements.notch.matches(':hover') || isSettingsOpen || isToolOpen || activeToolView) {
+    if (elements.notch.matches(':hover') || isSettingsOpen || isToolOpen || activeToolView || activeActivity) {
       return;
     }
     elements.notch.classList.remove('is-compact-strip-opaque');
@@ -882,6 +916,192 @@ function notificationItemId(notification) {
 function integrationForNotification(notification) {
   const source = `${notification?.app || ''} ${notification?.title || ''}`.toLowerCase();
   return EXTERNAL_APPS.find((app) => source.includes(app.name.toLowerCase()) && appSettings.integrations[app.id]?.connected);
+}
+
+function canShowLiveActivity() {
+  return !IS_STANDALONE_SETTINGS_WINDOW
+    && !activeAlarm
+    && Boolean(elements.activityCompact)
+    && !elements.notch.classList.contains('is-expanded');
+}
+
+function percentText(value) {
+  return `%${Math.max(0, Math.min(100, Math.round(Number(value) || 0)))}`;
+}
+
+function showLiveActivity(activity) {
+  if (!canShowLiveActivity()) {
+    return;
+  }
+
+  const isNewKind = activeActivity?.kind !== activity.kind;
+  activeActivity = activity;
+  clearTimeout(activityTimer);
+
+  elements.activityIcon.innerHTML = iconSvg(activity.icon);
+  elements.activityLabel.textContent = activity.label || '';
+  elements.activityValue.textContent = activity.value || '';
+  elements.activityCompact.dataset.kind = activity.kind;
+  elements.activityCompact.dataset.tone = activity.tone || '';
+  elements.notch.dataset.activityTone = activity.tone || '';
+
+  const hasMeter = Number.isFinite(activity.meter);
+  elements.activityMeter.hidden = !hasMeter;
+  if (hasMeter) {
+    if (isNewKind) {
+      elements.activityMeterFill.style.width = '0%';
+      elements.activityMeterFill.getBoundingClientRect();
+    }
+    elements.activityMeterFill.style.width = `${Math.max(0, Math.min(100, activity.meter))}%`;
+  }
+
+  if (isNewKind) {
+    elements.activityCompact.classList.remove('is-entering');
+    elements.activityCompact.getBoundingClientRect();
+    elements.activityCompact.classList.add('is-entering');
+  }
+  elements.activityCompact.hidden = false;
+  elements.notch.classList.add('has-live-activity');
+  revealCompactStrip();
+  activityTimer = setTimeout(hideLiveActivity, activity.durationMs || ACTIVITY_DISPLAY_MS.volume);
+}
+
+function hideLiveActivity() {
+  clearTimeout(activityTimer);
+  if (!activeActivity) {
+    return;
+  }
+
+  activeActivity = null;
+  elements.notch.classList.remove('has-live-activity');
+  delete elements.notch.dataset.activityTone;
+  elements.activityCompact.hidden = true;
+  elements.activityCompact.classList.remove('is-entering');
+  if (!elements.notch.matches(':hover')) {
+    scheduleCompactStripTransparency();
+  }
+}
+
+function namesFrom(value) {
+  return Array.isArray(value)
+    ? value.filter((name) => typeof name === 'string' && name.trim()).map((name) => name.trim().slice(0, 64))
+    : [];
+}
+
+function renderPrivacyIndicator(state) {
+  privacyState = {
+    camera: namesFrom(state?.camera),
+    microphone: namesFrom(state?.microphone)
+  };
+  if (!elements.privacyDots) {
+    return;
+  }
+
+  const cameraActive = privacyState.camera.length > 0;
+  const microphoneActive = privacyState.microphone.length > 0;
+  elements.privacyCameraDot.hidden = !cameraActive;
+  elements.privacyMicrophoneDot.hidden = !microphoneActive;
+  elements.privacyDots.hidden = !cameraActive && !microphoneActive;
+  elements.privacyDots.title = [
+    cameraActive ? `Kamera: ${privacyState.camera.join(', ')}` : '',
+    microphoneActive ? `Mikrofon: ${privacyState.microphone.join(', ')}` : ''
+  ].filter(Boolean).join('\n');
+  elements.notch.classList.toggle('has-privacy-indicator', cameraActive || microphoneActive);
+}
+
+function privacyStartActivity(started) {
+  const camera = namesFrom(started?.camera);
+  const microphone = namesFrom(started?.microphone);
+  if (camera.length) {
+    return {
+      kind: 'privacy',
+      icon: 'camera',
+      tone: 'camera',
+      label: `${camera.join(', ')} kamerayı kullanıyor`,
+      durationMs: ACTIVITY_DISPLAY_MS.privacy
+    };
+  }
+  if (microphone.length) {
+    return {
+      kind: 'privacy',
+      icon: 'microphone',
+      tone: 'microphone',
+      label: `${microphone.join(', ')} mikrofonu kullanıyor`,
+      durationMs: ACTIVITY_DISPLAY_MS.privacy
+    };
+  }
+  return null;
+}
+
+function handleLiveActivity(event) {
+  switch (event?.type) {
+    case 'volume':
+      showLiveActivity({
+        kind: 'volume',
+        icon: event.muted || event.level === 0 ? 'volumeMuted' : 'volume',
+        meter: event.muted ? 0 : event.level,
+        value: event.muted ? 'Sessiz' : percentText(event.level),
+        durationMs: ACTIVITY_DISPLAY_MS.volume
+      });
+      return;
+    case 'brightness':
+      showLiveActivity({
+        kind: 'brightness',
+        icon: 'sun',
+        meter: event.level,
+        value: percentText(event.level),
+        durationMs: ACTIVITY_DISPLAY_MS.brightness
+      });
+      return;
+    case 'audio-output':
+      showLiveActivity({
+        kind: 'audio-output',
+        deviceId: event.deviceId,
+        icon: event.headphones ? 'headphones' : 'volume',
+        tone: 'connected',
+        label: String(event.name || 'Ses çıkışı').slice(0, 80),
+        value: event.muted ? 'Sessiz' : '',
+        durationMs: ACTIVITY_DISPLAY_MS['audio-output']
+      });
+      return;
+    case 'audio-output-battery':
+      if (activeActivity?.kind === 'audio-output' && activeActivity.deviceId === event.deviceId) {
+        elements.activityValue.textContent = percentText(event.battery);
+      }
+      return;
+    case 'power':
+      showLiveActivity({
+        kind: 'power',
+        icon: event.charging ? 'charging' : 'unplugged',
+        tone: event.charging ? 'charging' : '',
+        label: event.charging ? 'Şarj oluyor' : 'Pille çalışıyor',
+        meter: event.percent,
+        value: percentText(event.percent),
+        durationMs: ACTIVITY_DISPLAY_MS.power
+      });
+      return;
+    case 'battery-low':
+      showLiveActivity({
+        kind: 'battery-low',
+        icon: 'batteryLow',
+        tone: 'low',
+        label: 'Pil azaldı',
+        meter: event.percent,
+        value: percentText(event.percent),
+        durationMs: ACTIVITY_DISPLAY_MS['battery-low']
+      });
+      return;
+    case 'privacy': {
+      renderPrivacyIndicator(event);
+      const activity = privacyStartActivity(event.started);
+      if (activity) {
+        showLiveActivity(activity);
+      }
+      return;
+    }
+    default:
+      break;
+  }
 }
 
 function renderNotification(notification) {
@@ -1173,6 +1393,19 @@ function iconSvg(name) {
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.task}</svg>`;
 }
 
+function menuIconSvg(item) {
+  return (typeof faIconSvg === 'function' && faIconSvg(item.action)) || iconSvg(item.icon);
+}
+
+function hydrateFaIcons(root = document) {
+  if (typeof faIconSvg !== 'function') {
+    return;
+  }
+  root.querySelectorAll('[data-fa-icon]').forEach((node) => {
+    node.innerHTML = faIconSvg(node.dataset.faIcon);
+  });
+}
+
 function externalAppLogo(app) {
   const name = app?.icon || app?.id || '';
   const fallback = escapeHtml(app?.name?.slice(0, 2).toUpperCase() || 'AP');
@@ -1215,7 +1448,7 @@ function renderMenu() {
     <div class="menu-page">
       ${page.map((item) => `
         <button class="menu-tile${item.active ? ' is-active' : ''}${item.disabled ? ' is-disabled' : ''}" data-action="${item.action}" data-state-key="${item.stateKey || ''}" ${item.disabled ? 'aria-disabled="true"' : ''}>
-          <span class="tile-icon">${iconSvg(item.icon)}</span>
+          <span class="tile-icon">${menuIconSvg(item)}</span>
           <span class="tile-label">${escapeHtml(menuLabel(item))}</span>
           <span class="tile-state"></span>
         </button>
@@ -1235,7 +1468,7 @@ function renderFeatureSettings() {
     const help = t(`featureHelp.${item.action}`, FEATURE_HELP[item.action] || 'Hızlı menü öğesini gösterir.');
     return `
       <article class="feature-card${enabled ? ' is-enabled' : ''}">
-        <div class="feature-card-icon" aria-hidden="true">${iconSvg(item.icon)}</div>
+        <div class="feature-card-icon" aria-hidden="true">${menuIconSvg(item)}</div>
         <div class="feature-card-copy">
           <strong>${escapeHtml(label)}</strong>
           <span>${escapeHtml(help)}</span>
@@ -1441,7 +1674,7 @@ function openInlineVideoStage() {
   elements.menuPages.closest('.menu-carousel').hidden = true;
   elements.menuDots.hidden = true;
   elements.notch.classList.add('is-expanded', 'is-video');
-  elements.notch.classList.remove('is-settings', 'is-tool');
+  elements.notch.classList.remove('is-settings', 'is-tool', 'is-collapsing');
   if (elements.screenVideoView.getAttribute('src') !== target) {
     elements.screenVideoView.setAttribute('src', target);
   }
@@ -1553,16 +1786,9 @@ function renderThemeControls() {
   document.querySelectorAll('[data-open-custom-theme]').forEach((button) => {
     button.classList.toggle('is-current', colorTheme === 'custom');
   });
-  document.querySelectorAll('[data-dark-theme-toggle]').forEach((button) => {
-    button.classList.toggle('is-on', colorTheme !== 'light');
-  });
   document.querySelectorAll('[data-accent-preset]').forEach((button) => {
     button.classList.toggle('is-current', String(button.dataset.accentPreset || '').toLowerCase() === activeAccent);
   });
-  const themeSelect = document.getElementById('themeSelect');
-  if (themeSelect && [...themeSelect.options].some((option) => option.value === colorTheme)) {
-    themeSelect.value = colorTheme;
-  }
   applyCustomColorPreview('', '');
 }
 
@@ -2188,6 +2414,7 @@ function startActiveAlarm(alarm, firedAt = Date.now()) {
     dismissActiveAlarm();
   }
 
+  hideLiveActivity();
   activeAlarm = {
     id: alarm.id,
     name: alarm.name || 'Alarm',
@@ -2405,8 +2632,17 @@ async function refreshBrightness() {
   elements.brightnessSlider.disabled = !available;
   elements.brightnessSlider.value = String(level);
   elements.brightnessSlider.setAttribute('aria-valuenow', String(level));
+  syncBrightnessPresets(level);
   elements.brightnessValue.textContent = available ? `${level}%` : '--%';
   elements.brightnessMessage.textContent = state?.message || 'Parlaklık durumu okunamadı.';
+}
+
+function syncBrightnessPresets(level) {
+  syncRangeFill(elements.brightnessSlider);
+  document.querySelectorAll('[data-brightness-preset]').forEach((button) => {
+    button.classList.toggle('is-current', Number(button.dataset.brightnessPreset) === Number(level));
+    button.disabled = elements.brightnessSlider.disabled;
+  });
 }
 
 async function updateBrightness(level) {
@@ -2417,6 +2653,7 @@ async function updateBrightness(level) {
   const requested = Math.max(0, Math.min(100, Number(level) || 0));
   elements.brightnessValue.textContent = `${requested}%`;
   elements.brightnessSlider.value = String(requested);
+  syncBrightnessPresets(requested);
 
   try {
     const result = await api.setBrightness(requested);
@@ -2425,6 +2662,7 @@ async function updateBrightness(level) {
     elements.brightnessSlider.disabled = !ok;
     elements.brightnessSlider.value = String(nextLevel);
     elements.brightnessSlider.setAttribute('aria-valuenow', String(nextLevel));
+    syncBrightnessPresets(nextLevel);
     elements.brightnessValue.textContent = ok ? `${nextLevel}%` : '--%';
     elements.brightnessMessage.textContent = result?.message
       || (ok ? 'Parlaklık değiştirildi.' : 'Parlaklık değiştirilemedi.');
@@ -2509,20 +2747,24 @@ function renderAudioMixer(mixer) {
       session.active ? 'Aktif' : 'Boşta'
     ].filter(Boolean).join(' - ');
 
+    const name = session.name || 'Uygulama';
     return `
-      <div class="audio-session-row" data-audio-session-row="${id}">
-        <div class="audio-session-info">
-          <strong>${escapeHtml(session.name || 'Uygulama')}</strong>
-          <span>${escapeHtml(status || 'Ses oturumu')}</span>
+      <div class="audio-session-row${session.muted ? ' is-muted' : ''}" data-audio-session-row="${id}">
+        <span class="tool-avatar" style="--avatar-hue:${avatarHue(name)}" aria-hidden="true">${avatarInitial(name)}</span>
+        <div class="audio-session-main">
+          <div class="audio-session-info">
+            <strong>${escapeHtml(name)}</strong>
+            <span>${escapeHtml(status || 'Ses oturumu')}</span>
+            <span class="audio-session-value">%${volume}</span>
+          </div>
+          <div class="audio-session-slider">
+            <input class="tool-range" type="range" min="0" max="100" step="1" value="${volume}" style="--fill:${volume}%" data-audio-volume="${id}" aria-label="${escapeHtml(name)} ses seviyesi" />
+            <span class="audio-peak" style="--peak:${peak}%"></span>
+          </div>
         </div>
-        <button class="mixer-mute${session.muted ? ' is-muted' : ''}" data-audio-mute="${id}" type="button" aria-label="${escapeHtml(session.name || 'Uygulama')} sesi">
-          ${session.muted ? 'Kapalı' : 'Açık'}
+        <button class="mixer-mute${session.muted ? ' is-muted' : ''}" data-audio-mute="${id}" type="button" title="${session.muted ? 'Sesi aç' : 'Sessize al'}" aria-label="${escapeHtml(name)} sesi" aria-pressed="${session.muted ? 'true' : 'false'}">
+          ${faIconSvg(session.muted ? 'ui-volume-muted' : 'ui-volume')}
         </button>
-        <div class="audio-session-slider">
-          <input type="range" min="0" max="100" step="1" value="${volume}" data-audio-volume="${id}" />
-          <span class="audio-peak" style="--peak:${peak}%"></span>
-        </div>
-        <span class="audio-session-value">%${volume}</span>
       </div>
     `;
   }).join('');
@@ -2547,16 +2789,52 @@ function renderFocusAssist() {
   }
 
   const state = lastControlState?.silent;
+  const enabled = state?.enabled === true;
+  const panel = elements.focusState.closest('.focus-panel');
+  const toggle = panel?.querySelector('[data-focus-toggle]');
+  const icon = document.getElementById('focusIcon');
+  panel?.classList.toggle('is-on', enabled);
+  toggle?.classList.toggle('is-on', enabled);
+  toggle?.setAttribute('aria-pressed', String(enabled));
+  if (icon && typeof faIconSvg === 'function') {
+    icon.innerHTML = faIconSvg(enabled ? 'ui-bell-slash' : 'ui-bell');
+  }
+
   if (!state) {
     elements.focusState.textContent = 'Durum bilinmiyor';
     elements.focusDetail.textContent = 'Windows bildirim durumu henüz okunmadı.';
     return;
   }
 
-  elements.focusState.textContent = state.enabled ? 'Rahatsız etmeyin açık' : 'Bildirimler açık';
-  elements.focusDetail.textContent = state.enabled
-    ? 'Windows hızlı ayarındaki bildirim anahtarı kapalı. Tekrar basınca açılır.'
-    : 'Windows hızlı ayarındaki bildirim anahtarı açık. Tekrar basınca rahatsız etmeyin açılır.';
+  elements.focusState.textContent = enabled ? 'Rahatsız etmeyin açık' : 'Bildirimler açık';
+  elements.focusDetail.textContent = enabled
+    ? 'Bildirimler sessize alındı. Kapatmak için anahtarı kullan.'
+    : 'Tüm bildirimler gösteriliyor. Sessize almak için anahtarı aç.';
+}
+
+const AVATAR_HUES = [210, 185, 160, 140, 95, 40, 25, 8];
+
+function avatarHue(text) {
+  let hash = 0;
+  for (const char of String(text || '')) {
+    hash = (hash * 31 + char.codePointAt(0)) % 9973;
+  }
+  return AVATAR_HUES[hash % AVATAR_HUES.length];
+}
+
+function avatarInitial(text) {
+  const first = String(text || '').trim().charAt(0);
+  return escapeHtml(first ? first.toLocaleUpperCase('tr-TR') : '?');
+}
+
+function syncRangeFill(input) {
+  if (!input) {
+    return;
+  }
+  const min = Number(input.min) || 0;
+  const max = Number(input.max) || 100;
+  const percent = max > min ? ((Number(input.value) - min) / (max - min)) * 100 : 0;
+  input.style.setProperty('--fill', `${Math.max(0, Math.min(100, percent))}%`);
 }
 
 function renderNotificationCenter() {
@@ -2573,21 +2851,21 @@ function renderNotificationCenter() {
     const id = notificationItemId(notification);
     const createdAt = Number(notification.createdAt || 0);
     const time = createdAt ? new Date(createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+    const appName = notification.app || notification.title || 'Bildirim';
     return `
       <article class="notification-row">
+        <span class="tool-avatar" style="--avatar-hue:${avatarHue(appName)}" aria-hidden="true">${avatarInitial(appName)}</span>
         <div class="notification-row-content">
+          <div class="notification-row-meta">
+            <span class="notification-app">${escapeHtml(appName)}</span>
+            <time>${escapeHtml(time)}</time>
+          </div>
           <strong>${escapeHtml(notification.title || notification.app || 'Bildirim')}</strong>
-          <span>${escapeHtml(notification.message || notification.app || '')}</span>
+          <span class="notification-message">${escapeHtml(notification.message || '')}</span>
         </div>
-        <div class="notification-row-side">
-          <time>${escapeHtml(time)}</time>
-          <button class="notification-dismiss" type="button" data-notification-dismiss="${escapeHtml(id)}" title="Kaldır" aria-label="Bildirimi kaldır">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </div>
+        <button class="notification-dismiss" type="button" data-notification-dismiss="${escapeHtml(id)}" title="Kaldır" aria-label="Bildirimi kaldır">
+          ${faIconSvg('ui-xmark')}
+        </button>
       </article>
     `;
   }).join('');
@@ -2841,7 +3119,7 @@ function openToolView(viewName) {
   elements.settingsPanel.hidden = true;
   elements.toolPanel.hidden = false;
   elements.notch.classList.add('is-expanded', 'is-tool');
-  elements.notch.classList.remove('is-settings');
+  elements.notch.classList.remove('is-settings', 'is-collapsing');
   setMediaMode(false);
   setAlarmMode(false);
   if (elements.toolHeaderAction) {
@@ -3063,7 +3341,7 @@ function openSettingsView() {
   elements.toolPanel.hidden = true;
   elements.settingsPanel.hidden = false;
   elements.notch.classList.add('is-expanded', 'is-settings');
-  elements.notch.classList.remove('is-tool');
+  elements.notch.classList.remove('is-tool', 'is-collapsing');
   setMediaMode(false);
   setAlarmMode(false);
   if (!IS_STANDALONE_SETTINGS_WINDOW) {
@@ -3099,8 +3377,15 @@ function enterStandaloneSettingsWindow() {
 }
 
 function syncOverlayMode(mode) {
+  overlayModeState = mode;
+  if (mode === 'collapsed') {
+    resetStripPointer();
+  }
   if (mode !== 'controls') {
     closeInlineVideoStage();
+  }
+  if (mode !== 'collapsed') {
+    hideLiveActivity();
   }
 
   if (mode === 'settings') {
@@ -3523,36 +3808,145 @@ function bindCarouselEvents() {
 }
 
 function bindEvents() {
-  const EXPAND_HOVER_DELAY_MS = 160;
-  const COLLAPSE_SYNC_DELAY_MS = 40;
+  const EXPAND_HOVER_DELAY_MS = 140;
+  const RESIZE_WAIT_FALLBACK_MS = 120;
+  // styles.css içindeki kapanış clip-path süresiyle aynı olmalı.
+  const COLLAPSE_ANIMATION_MS = 200;
 
-  elements.notch.addEventListener('mouseenter', () => {
+  const showExpandedPanel = () => {
+    if (isSettingsOpen || isToolOpen) {
+      return;
+    }
+    syncStripClipSize();
+    elements.notch.classList.add('is-expanded');
+    updateDynamicMediaMode();
+  };
+
+  const collapsedStrip = elements.notch.querySelector('.collapsed-strip');
+  let pointerOnStrip = false;
+
+  // Kapalı pencere panel genişliğindedir; hover yalnızca şeridin kendisinde başlamalı.
+  // İmlecin şeritte olup olmadığını ana süreç bildirir (overlay:strip-hover).
+  const isCollapsedWindow = () => overlayModeState === 'collapsed'
+    && !elements.notch.classList.contains('is-expanded');
+
+  const setPointerOnStrip = (inside) => {
+    if (pointerOnStrip === inside) {
+      return;
+    }
+    pointerOnStrip = inside;
+    if (!isCollapsedWindow()) {
+      return;
+    }
+    if (inside) {
+      beginHoverIntent();
+    } else {
+      clearTimeout(expandTimer);
+      scheduleCompactStripTransparency();
+    }
+  };
+
+  resetStripPointer = () => {
+    pointerOnStrip = false;
+  };
+
+  let lastStripRect = '';
+  const reportStripRect = () => {
+    if (!collapsedStrip || IS_STANDALONE_SETTINGS_WINDOW) {
+      return;
+    }
+    const rect = collapsedStrip.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    const next = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    };
+    const key = `${next.x},${next.y},${next.width},${next.height}`;
+    if (key !== lastStripRect) {
+      lastStripRect = key;
+      api.setStripRect?.(next);
+    }
+  };
+
+  if (collapsedStrip && typeof ResizeObserver === 'function') {
+    new ResizeObserver(reportStripRect).observe(collapsedStrip);
+  }
+  window.addEventListener('resize', reportStripRect);
+  collapsedStrip?.addEventListener('transitionend', reportStripRect);
+  new MutationObserver(reportStripRect).observe(elements.notch, { attributes: true, attributeFilter: ['class'] });
+  reportStripRect();
+  api.onStripHover?.(setPointerOnStrip);
+
+  // Panelin kapanış kırpması şeridin gerçek boyutuna oturmalı; içerik ekleri şeridi genişletebilir.
+  const syncStripClipSize = () => {
+    if (!collapsedStrip || !collapsedStrip.offsetWidth) {
+      return;
+    }
+    elements.notch.style.setProperty('--strip-clip-w', `${collapsedStrip.offsetWidth}px`);
+    elements.notch.style.setProperty('--strip-clip-h', `${collapsedStrip.offsetHeight}px`);
+  };
+
+  document.addEventListener('mousemove', (event) => {
     if (IS_STANDALONE_SETTINGS_WINDOW) {
       return;
     }
+    if (elements.notch.classList.contains('is-collapsing')) {
+      beginHoverIntent();
+    }
+  });
 
+  elements.notch.addEventListener('mouseenter', () => {
+    if (IS_STANDALONE_SETTINGS_WINDOW || isCollapsedWindow()) {
+      return;
+    }
+    beginHoverIntent();
+  });
+
+  function beginHoverIntent() {
     revealCompactStrip();
-    clearTimeout(collapseTimer);
     clearTimeout(expandTimer);
     if (isSettingsOpen || isToolOpen) {
+      clearTimeout(collapseTimer);
+      return;
+    }
+
+    if (elements.notch.classList.contains('is-collapsing')) {
+      // Kapanış animasyonu sürerken geri dönüldü; pencere hâlâ büyük.
+      clearTimeout(collapseTimer);
+      elements.notch.classList.remove('is-collapsing');
+      showExpandedPanel();
       return;
     }
 
     // Kısa dokunuşlarda pencere büyüyüp şerit kaymasın diye hover niyeti bekle.
     expandTimer = setTimeout(() => {
-      api.expand();
-      requestAnimationFrame(() => {
-        if (isSettingsOpen || isToolOpen) {
-          return;
+      const startWidth = window.innerWidth;
+      const startHeight = window.innerHeight;
+      let fallbackTimer;
+      const reveal = () => {
+        window.removeEventListener('resize', onResize);
+        clearTimeout(fallbackTimer);
+        requestAnimationFrame(showExpandedPanel);
+      };
+      const onResize = () => {
+        if (window.innerWidth !== startWidth || window.innerHeight !== startHeight) {
+          reveal();
         }
-        elements.notch.classList.add('is-expanded');
-        updateDynamicMediaMode();
-      });
+      };
+      window.addEventListener('resize', onResize);
+      fallbackTimer = setTimeout(reveal, RESIZE_WAIT_FALLBACK_MS);
+      api.expand();
     }, EXPAND_HOVER_DELAY_MS);
-  });
+  }
 
-  elements.notch.addEventListener('mouseleave', () => {
-    if (IS_STANDALONE_SETTINGS_WINDOW) {
+  const handlePointerLeave = () => {
+    // Kapalıyken şerit hover'ını ana süreç yönetir; etkileşim açılırken Chromium'un ürettiği
+    // sahte mouseleave bekleyen açılışı iptal etmemeli.
+    if (IS_STANDALONE_SETTINGS_WINDOW || elements.notch.classList.contains('is-collapsing') || isCollapsedWindow()) {
       return;
     }
 
@@ -3564,27 +3958,43 @@ function bindEvents() {
     clearTimeout(collapseTimer);
     clearTimeout(expandTimer);
     mediaMenuOverride = false;
-    setMediaMode(false);
-    setAlarmMode(false);
 
     const wasExpanded = elements.notch.classList.contains('is-expanded');
     if (!wasExpanded) {
+      setMediaMode(false);
+      setAlarmMode(false);
       scheduleCompactStripTransparency();
       api.collapse();
       return;
     }
 
+    // Önce panel şeride doğru küçülür, pencere animasyon bitince daraltılır.
+    // Medya/alarm modu kapanış bitene kadar korunur, yoksa panel önce büyür.
+    syncStripClipSize();
     elements.notch.classList.add('is-collapsing');
-    api.collapse();
-    collapseTimer = setTimeout(() => {
-      if (isSettingsOpen || isToolOpen || activeToolView) {
-        elements.notch.classList.remove('is-collapsing');
+    elements.notch.classList.remove('is-expanded');
+    // Windows, daralan pencerede son çizilen kareyi bir süre gösterir; bu yüzden
+    // panelin görünmediği bir kare ekrana basılmadan pencere küçültülmemeli.
+    const finishCollapse = () => {
+      if (!elements.notch.classList.contains('is-collapsing')) {
         return;
       }
-      elements.notch.classList.remove('is-expanded', 'is-collapsing');
+      elements.notch.classList.remove('is-collapsing');
+      if (isSettingsOpen || isToolOpen || activeToolView) {
+        return;
+      }
+      setMediaMode(false);
+      setAlarmMode(false);
+      api.collapse();
       scheduleCompactStripTransparency();
-    }, COLLAPSE_SYNC_DELAY_MS);
-  });
+    };
+    collapseTimer = setTimeout(() => {
+      requestAnimationFrame(() => requestAnimationFrame(finishCollapse));
+    }, COLLAPSE_ANIMATION_MS);
+  };
+
+  elements.notch.addEventListener('mouseleave', handlePointerLeave);
+  api.onPointerLeave?.(handlePointerLeave);
 
   document.querySelectorAll('[data-media]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -3763,6 +4173,20 @@ function bindEvents() {
     const level = Number(elements.brightnessSlider.value) || 0;
     elements.brightnessValue.textContent = `${level}%`;
     elements.brightnessSlider.setAttribute('aria-valuenow', String(level));
+    syncRangeFill(elements.brightnessSlider);
+  });
+
+  document.querySelectorAll('[data-brightness-preset]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (elements.brightnessSlider.disabled) {
+        return;
+      }
+      try {
+        await updateBrightness(button.dataset.brightnessPreset);
+      } catch (error) {
+        setToast(error.message || 'Parlaklık değiştirilemedi');
+      }
+    });
   });
 
   elements.brightnessSlider.addEventListener('change', async () => {
@@ -3784,6 +4208,7 @@ function bindEvents() {
         return;
       }
 
+      syncRangeFill(slider);
       const row = slider.closest('.audio-session-row');
       const value = row?.querySelector('.audio-session-value');
       if (value) {
@@ -4200,24 +4625,6 @@ function bindEvents() {
       return;
     }
 
-    const darkThemeToggle = event.target.closest('[data-dark-theme-toggle]');
-    if (darkThemeToggle) {
-      try {
-        const current = appSettings.appearance.colorTheme || 'default';
-        const nextTheme = current === 'light'
-          ? (window.__lastDarkTheme || 'default')
-          : 'light';
-        if (current !== 'light') {
-          window.__lastDarkTheme = current;
-        }
-        const settings = await api.updateSettings(makePatch('appearance.colorTheme', nextTheme));
-        applySettings(settings);
-      } catch (error) {
-        setToast(error.message || 'Tema değiştirilemedi');
-      }
-      return;
-    }
-
     const accentPreset = event.target.closest('[data-accent-preset]');
     if (accentPreset) {
       try {
@@ -4367,6 +4774,7 @@ async function start() {
   await renderLanguageOptions(appSettings.appearance.language);
   await loadLanguage(appSettings.appearance.language);
   applyTheme();
+  hydrateFaIcons();
   applySettings(appSettings, { force: true });
   resetOverlayUiState();
   showSettingsSection('home');
@@ -4402,6 +4810,12 @@ async function start() {
   api.onOverlayMode(syncOverlayMode);
   api.onNotification(renderNotification);
   api.onUpdateStatus(renderUpdateStatus);
+  api.onActivity(handleLiveActivity);
+  api.getPrivacyState().then((state) => {
+    if (state) {
+      renderPrivacyIndicator(state);
+    }
+  }).catch(() => {});
   api.onScreenVideoShow(() => {
     const result = openInlineVideoStage();
     if (result?.message) {

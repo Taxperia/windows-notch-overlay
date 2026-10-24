@@ -50,3 +50,18 @@ test('settings schema preserves supported application choices', () => {
   assert.equal(result.appearance.notchStyle, 'pill');
   assert.equal(result.content.primaryWidget, 'pomodoro');
 });
+
+test('live activity toggles default on and only accept booleans', () => {
+  const result = appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, {
+    liveActivities: {
+      volume: false,
+      privacy: 'yes',
+      unknown: true
+    }
+  });
+
+  assert.equal(result.liveActivities.volume, false);
+  assert.equal(result.liveActivities.privacy, true);
+  assert.equal(result.liveActivities.brightness, true);
+  assert.equal(result.liveActivities.unknown, undefined);
+});

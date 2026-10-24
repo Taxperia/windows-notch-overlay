@@ -19,10 +19,18 @@ const IID_IAUDIO_SESSION_CONTROL2 = guid('BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D')
 const IID_IAUDIO_SESSION_MANAGER2 = guid('77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F');
 const IID_ISIMPLE_AUDIO_VOLUME = guid('87CE5498-68D6-44E5-9215-6DA47EF883D8');
 const IID_IPOLICY_CONFIG = guid('F8679F50-850A-41CF-9C72-430F290290C8');
+const STGM_READ = 0;
+const VT_UI4 = 19;
+const VT_LPWSTR = 31;
+const PROPVARIANT_SIZE = 24;
+const PKEY_DEVICE_FRIENDLY_NAME = propertyKey('A45C254E-DF1C-4EFD-8020-67D146A850E0', 14);
+const PKEY_AUDIO_ENDPOINT_FORM_FACTOR = propertyKey('1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E', 0);
+const HEADPHONE_FORM_FACTORS = new Set([3, 5]);
 
 const CoInitializeEx = ole32.func('int32_t __stdcall CoInitializeEx(void *pvReserved, uint32_t dwCoInit)');
 const CoUninitialize = ole32.func('void __stdcall CoUninitialize()');
 const CoCreateInstance = ole32.func('int32_t __stdcall CoCreateInstance(const void *rclsid, void *pUnkOuter, uint32_t dwClsContext, const void *riid, _Out_ void **ppv)');
+const PropVariantClear = ole32.func('int32_t __stdcall PropVariantClear(void *pvar)');
 
 const Release = koffi.proto('uint32_t __stdcall Release(void *self)');
 const EnumAudioEndpoints = koffi.proto('int32_t __stdcall EnumAudioEndpoints(void *self, int dataFlow, uint32_t stateMask, _Out_ void **ppDevices)');
@@ -51,6 +59,8 @@ const SetSimpleMasterVolume = koffi.proto('int32_t __stdcall SimpleAudioSetMaste
 const GetSimpleMasterVolume = koffi.proto('int32_t __stdcall SimpleAudioGetMasterVolume(void *self, _Out_ float *pfLevel)');
 const SetSimpleMute = koffi.proto('int32_t __stdcall SimpleAudioSetMute(void *self, int bMute, void *EventContext)');
 const GetSimpleMute = koffi.proto('int32_t __stdcall SimpleAudioGetMute(void *self, _Out_ int *pbMute)');
+const OpenPropertyStore = koffi.proto('int32_t __stdcall OpenPropertyStore(void *self, uint32_t stgmAccess, _Out_ void **ppProperties)');
+const GetPropertyValue = koffi.proto('int32_t __stdcall PropertyStoreGetValue(void *self, const void *key, void *pv)');
 
 function guid(value) {
   const parts = value.replace(/[{}]/g, '').split('-');
@@ -59,6 +69,13 @@ function guid(value) {
   buffer.writeUInt16LE(parseInt(parts[1], 16), 4);
   buffer.writeUInt16LE(parseInt(parts[2], 16), 6);
   Buffer.from(`${parts[3]}${parts[4]}`, 'hex').copy(buffer, 8);
+  return buffer;
+}
+
+function propertyKey(formatId, propertyId) {
+  const buffer = Buffer.alloc(20);
+  guid(formatId).copy(buffer, 0);
+  buffer.writeUInt32LE(propertyId, 16);
   return buffer;
 }
 
@@ -393,6 +410,88 @@ function setDefaultCaptureEndpoint(deviceId) {
   }
 }
 
+function readDeviceProperty(store, key) {
+  const value = Buffer.alloc(PROPVARIANT_SIZE);
+  if (failed(callMethod(store, 5, GetPropertyValue, key, value))) {
+    return null;
+  }
+
+  try {
+    const type = value.readUInt16LE(0);
+    if (type === VT_LPWSTR) {
+      const text = koffi.decode(value, 8, 'void *');
+      return text ? String(koffi.decode(text, 'char16_t', -1) || '').trim() : '';
+    }
+    if (type === VT_UI4) {
+      return value.readUInt32LE(8);
+    }
+    return null;
+  } finally {
+    PropVariantClear(value);
+  }
+}
+
+function getDefaultRenderEndpoint(options = {}) {
+  const includeDetails = options.includeDetails !== false;
+  const didInitialize = initializeCom();
+  let enumerator = null;
+  let device = null;
+  let volume = null;
+  let store = null;
+
+  try {
+    enumerator = createEnumerator();
+    const deviceOut = [null];
+    const hr = callMethod(enumerator, 4, GetDefaultAudioEndpoint, E_RENDER, 0, deviceOut);
+    if (failed(hr) || !deviceOut[0]) {
+      return { available: false };
+    }
+    device = deviceOut[0];
+
+    const volumeOut = [null];
+    checkHr(
+      callMethod(device, 3, Activate, IID_IAUDIO_ENDPOINT_VOLUME, CLSCTX_ALL, null, volumeOut),
+      'Activate IAudioEndpointVolume render'
+    );
+    volume = volumeOut[0];
+
+    const mute = [0];
+    const level = [0];
+    checkHr(callMethod(volume, 15, GetMute, mute), 'GetMute render');
+    checkHr(callMethod(volume, 9, GetMasterVolumeLevelScalar, level), 'GetMasterVolumeLevelScalar render');
+
+    const endpoint = {
+      available: true,
+      id: decodeDeviceId(device),
+      level: Math.round(Math.max(0, Math.min(1, level[0])) * 100),
+      muted: mute[0] !== 0
+    };
+    if (!includeDetails) {
+      return endpoint;
+    }
+
+    const storeOut = [null];
+    if (!failed(callMethod(device, 4, OpenPropertyStore, STGM_READ, storeOut))) {
+      store = storeOut[0];
+    }
+    const formFactor = store ? readDeviceProperty(store, PKEY_AUDIO_ENDPOINT_FORM_FACTOR) : null;
+
+    return {
+      ...endpoint,
+      name: (store ? readDeviceProperty(store, PKEY_DEVICE_FRIENDLY_NAME) : '') || '',
+      headphones: HEADPHONE_FORM_FACTORS.has(formFactor)
+    };
+  } finally {
+    release(store);
+    release(volume);
+    release(device);
+    release(enumerator);
+    if (didInitialize) {
+      CoUninitialize();
+    }
+  }
+}
+
 function getCaptureMuteState() {
   const devices = enumerateCaptureDevices(({ id, volume }) => {
     const mute = [0];
@@ -660,6 +759,7 @@ module.exports = {
   enumerateCaptureEndpoints,
   getAudioSessions,
   getDefaultCaptureEndpointIds,
+  getDefaultRenderEndpoint,
   getCaptureMuteState,
   getCapturePeakLevels,
   setAudioSessionMuted,

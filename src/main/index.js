@@ -46,6 +46,7 @@ const {
   setAudioSessionVolume
 } = require('./coreAudio');
 const { cleanRam, memorySnapshot } = require('./ramCleaner');
+const { createLiveActivityMonitor } = require('./liveActivity');
 const packageJson = require('../../package.json');
 
 let overlayTheme = process.env.NOTCH_THEME === 'floating' ? 'floating' : 'attached';
@@ -118,6 +119,16 @@ const dismissedNotificationIds = new Set();
 let lastNetworkSample = null;
 let notificationHistory = [];
 const lastRendererRequestAt = new Map();
+const liveActivity = createLiveActivityMonitor({
+  emit: (event) => {
+    if (event.type === 'brightness') {
+      brightnessCache = { at: 0, value: null };
+    }
+    sendToWindow(mainWindow, 'activity:update', event);
+  },
+  readHeadphoneBattery: () => readHeadphoneBattery(),
+  supportsBrightnessEvents: async () => (await readHardwareBrightness())?.source === 'Windows WMI'
+});
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -815,7 +826,7 @@ app.on('web-contents-created', (_event, contents) => {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    ...getOverlayBounds(collapsedBounds),
+    ...getOverlayBounds(boundsForOverlayMode(overlayMode)),
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -838,6 +849,7 @@ function createWindow() {
   });
 
   hardenRendererWindow(mainWindow);
+  syncOverlayMousePassthrough();
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   loadRenderer(mainWindow);
@@ -942,11 +954,13 @@ function withPanelChrome(bounds, style = currentNotchStyle) {
   };
 }
 
-function boundsForOverlayMode(mode) {
-  if (mode === 'collapsed') {
-    return collapsedBounds;
-  }
+// Kapalı/açık geçişlerinde pencere genişliği sabit kalır. Genişlik değişince Windows bir kare
+// boyunca eski görüntüyü sol üstten kırparak gösterir ve şerit yana kaymış görünür.
+function hoverOverlayWidth() {
+  return Math.max(collapsedBounds.width, withPanelChrome(EXPANDED_BOUNDS).width);
+}
 
+function boundsForOverlayMode(mode) {
   if (mode === 'settings') {
     return {
       width: SETTINGS_BOUNDS.width,
@@ -954,19 +968,91 @@ function boundsForOverlayMode(mode) {
     };
   }
 
+  const width = hoverOverlayWidth();
   if (mode === 'controls') {
-    return withPanelChrome(EXPANDED_BOUNDS);
+    return { width, height: withPanelChrome(EXPANDED_BOUNDS).height };
   }
 
   if (mode === 'media') {
-    return withPanelChrome(MEDIA_BOUNDS);
+    return { width, height: withPanelChrome(MEDIA_BOUNDS).height };
   }
 
   if (mode === 'alarm') {
-    return withPanelChrome(ALARM_BOUNDS);
+    return { width, height: withPanelChrome(ALARM_BOUNDS).height };
   }
 
-  return collapsedBounds;
+  return { width, height: collapsedBounds.height };
+}
+
+const POINTER_POLL_MS = 50;
+const STRIP_HIT_SLOP_PX = 4;
+let pointerTimer = null;
+let pointerWasInside = false;
+let pointerOnStrip = false;
+let stripRect = null;
+
+function isPointInRect(point, rect, slop = 0) {
+  return point.x >= rect.x - slop && point.x < rect.x + rect.width + slop
+    && point.y >= rect.y - slop && point.y < rect.y + rect.height + slop;
+}
+
+function setPointerOnStrip(inside) {
+  if (pointerOnStrip === inside) {
+    return;
+  }
+  pointerOnStrip = inside;
+  mainWindow.setIgnoreMouseEvents(!inside);
+  sendToWindow(mainWindow, 'overlay:strip-hover', inside);
+}
+
+// setIgnoreMouseEvents'in forward seçeneği sistem geneli düşük seviye fare kancası kurar ve
+// ana süreç meşgulken imleci takıltır; bu yüzden imleç konumu burada yoklanır.
+function pollOverlayPointer() {
+  if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
+    return;
+  }
+  const point = screen.getCursorScreenPoint();
+  const bounds = mainWindow.getBounds();
+
+  if (overlayMode === 'collapsed') {
+    const onStrip = Boolean(stripRect) && isPointInRect(point, {
+      x: bounds.x + stripRect.x,
+      y: bounds.y + stripRect.y,
+      width: stripRect.width,
+      height: stripRect.height
+    }, STRIP_HIT_SLOP_PX);
+    setPointerOnStrip(onStrip);
+    return;
+  }
+
+  const inside = isPointInRect(point, bounds);
+  if (pointerWasInside && !inside) {
+    sendToWindow(mainWindow, 'overlay:pointer-leave');
+  }
+  pointerWasInside = inside;
+}
+
+function syncPointerWatch() {
+  if (overlayMode === 'settings') {
+    clearInterval(pointerTimer);
+    pointerTimer = null;
+    return;
+  }
+  if (!pointerTimer) {
+    pointerTimer = setInterval(pollOverlayPointer, POINTER_POLL_MS);
+  }
+}
+
+function syncOverlayMousePassthrough() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  // Kapalıyken pencere panel genişliğindedir; şeridin yanlarındaki şeffaf alan tıklamaları
+  // alttaki pencerelere geçirir, imleç şeride gelince etkileşim açılır.
+  pointerOnStrip = false;
+  pointerWasInside = true;
+  mainWindow.setIgnoreMouseEvents(overlayMode === 'collapsed');
+  syncPointerWatch();
 }
 
 function setOverlayMode(nextMode) {
@@ -978,6 +1064,7 @@ function setOverlayMode(nextMode) {
   const bounds = boundsForOverlayMode(nextMode);
 
   mainWindow.setBounds(getOverlayBounds(bounds), false);
+  syncOverlayMousePassthrough();
   sendToWindow(mainWindow, 'overlay:mode', nextMode);
 }
 
@@ -1004,6 +1091,7 @@ function applyRuntimeSettings(settings) {
   });
   configureAutoUpdates(settings);
   registerVideoShortcuts(settings);
+  liveActivity.configure(settings?.liveActivities);
 
   if (nextTheme !== overlayTheme) {
     overlayTheme = nextTheme;
@@ -1175,8 +1263,10 @@ function wait(ms) {
 async function takePrimaryScreenshot() {
   const overlay = mainWindow;
   const shouldRestoreOverlay = overlay && !overlay.isDestroyed() && overlay.isVisible();
+  // hide() renderer'a mouseleave gönderip paneli yarım animasyonda bırakıyor; saydamlık durumu korur.
+  const previousOpacity = shouldRestoreOverlay ? overlay.getOpacity() : 1;
   if (shouldRestoreOverlay) {
-    overlay.hide();
+    overlay.setOpacity(0);
     await wait(120);
   }
 
@@ -1207,7 +1297,7 @@ async function takePrimaryScreenshot() {
     return filePath;
   } finally {
     if (shouldRestoreOverlay && overlay && !overlay.isDestroyed()) {
-      overlay.showInactive();
+      overlay.setOpacity(previousOpacity);
     }
   }
 }
@@ -1505,6 +1595,17 @@ function registerIpc() {
       setOverlayMode('controls');
     }
   });
+  ipcMain.on('overlay:strip-rect', (event, rect) => {
+    if (!isMainWindowSender(event)) {
+      return;
+    }
+
+    const values = [rect?.x, rect?.y, rect?.width, rect?.height];
+    if (!values.every((value) => Number.isFinite(value) && Math.abs(value) < 10000)) {
+      return;
+    }
+    stripRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
   ipcMain.on('overlay:collapse', (event) => {
     if (!isMainWindowSender(event)) {
       return;
@@ -1549,6 +1650,7 @@ function registerIpc() {
     });
   });
   registerTrustedHandle('controls:get', () => getPublishedControlState());
+  registerTrustedHandle('privacy:get', () => liveActivity.getPrivacyState());
   registerTrustedHandle('settings:get', () => loadSettings());
   registerTrustedHandle('notifications:get', () => ({
     available: true,
@@ -1856,10 +1958,14 @@ app.whenReady().then(async () => {
 app.on('before-quit', () => {
   restoreMicrophoneMuteIfNeeded();
   deactivateSoftwareDimmer();
+  liveActivity.stop();
 
   if (metricsTimer) {
     clearInterval(metricsTimer);
   }
+
+  clearInterval(pointerTimer);
+  pointerTimer = null;
 
   if (mediaTimer) {
     clearInterval(mediaTimer);

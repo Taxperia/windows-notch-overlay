@@ -13,3 +13,11 @@ This repository is an independent Electron/Node.js implementation with a differe
 A local copy of DynamicWin's license text is included in [DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md](DYNAMICWIN_CC_BY_SA_4_0_LICENSE.md) for attribution and reference.
 
 If any future contribution imports, ports, or adapts DynamicWin-owned code, assets, or documentation, that contribution must clearly mark the copied/adapted material and comply with CC BY-SA 4.0.
+
+## Font Awesome Free
+
+Menu and settings navigation icons in `src/renderer/faIcons.js` are SVG path data taken from Font Awesome Free 7.3.1.
+
+- Project: https://fontawesome.com
+- Copyright: Fonticons, Inc.
+- License: Icons under Creative Commons Attribution 4.0 International (CC BY 4.0), https://fontawesome.com/license/free

@@ -78,6 +78,13 @@ const DEFAULT_SETTINGS = Object.freeze({
     showPing: false,
     showHeadphoneBattery: false
   },
+  liveActivities: {
+    volume: true,
+    brightness: true,
+    audioOutput: true,
+    power: true,
+    privacy: true
+  },
   integrations: {
     discord: {
       connected: false,
