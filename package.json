@@ -3,9 +3,14 @@
   "version": "0.4.0",
   "description": "Electron-based dynamic notch overlay for Windows with quick controls, telemetry, alarms, search, and media state.",
   "main": "src/main/index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "electron . --devtools",
+    "check": "node scripts/check-source.js",
+    "check:security": "npm audit --audit-level=moderate",
     "test": "node --test",
     "build:media-helper": "dotnet publish src/helpers/media-session/MediaSessionHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/media-session/publish",
     "build:notification-helper": "dotnet publish src/helpers/notifications/NotificationHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/notifications/publish",
@@ -33,8 +38,8 @@
     "koffi": "^3.3.3"
   },
   "devDependencies": {
-    "electron": "^44.7.2",
-    "electron-builder": "^26.15.3"
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
   },
   "overrides": {
     "global-agent": "4.1.3"

@@ -26,31 +26,10 @@ jobs:
         run: npm ci
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: npm run check:security
 
-      - name: Check JavaScript syntax
-        run: |
-          node --check src/main/appSettings.js
-          node --check src/main/coreAudio.js
-          node --check src/main/index.js
-          node --check src/main/integrationAuth.js
-          node --check src/main/integrationProviders.js
-          node --check src/main/media.js
-          node --check src/main/monitorBrightness.js
-          node --check src/main/notifications.js
-          node --check src/main/ramCleaner.js
-          node --check src/main/systemMetrics.js
-          node --check src/main/win32.js
-          node --check src/main/windowsControls.js
-          node --check src/preload.js
-          node --check src/renderer/renderer.js
-          node --check test/appSettings.test.js
-          node --check test/securityStatic.test.js
+      - name: Validate source and package metadata
+        run: npm run check
 
       - name: Run tests
         run: npm test
-
-      - name: Validate JSON and package versions
-        run: |
-          node -e "const fs = require('node:fs'); for (const file of ['package.json', 'package-lock.json', 'src/renderer/i18n/en.json', 'src/renderer/i18n/tr.json']) JSON.parse(fs.readFileSync(file, 'utf8'));"
-          node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8')); if (pkg.version !== lock.version || pkg.version !== lock.packages[''].version) throw new Error('package and lockfile versions do not match');"
