@@ -10,9 +10,19 @@ Thanks for considering a contribution to Windows Notch Overlay.
 
 ## Local Setup
 
+Use Node.js 22.12 or newer (Node.js 24 recommended).
+
 ```bash
-npm install
+npm ci
 npm start
+```
+
+Run the same source, test, and dependency checks used in CI before submitting changes:
+
+```bash
+npm run check
+npm test
+npm run check:security
 ```
 
 To build a portable Windows package:

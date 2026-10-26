@@ -112,7 +112,7 @@ Some helper-powered features may require the [.NET 8 Desktop Runtime][dotnet-run
 #### Prerequisites
 
 - Windows 10 or Windows 11
-- Node.js 20 or newer
+- Node.js 22.12 or newer (Node.js 24 recommended)
 - npm
 - .NET 8 SDK
 - Git
@@ -309,9 +309,9 @@ DynamicWin and any DynamicWin-owned material remain under their respective licen
 [issues-url]: https://github.com/Taxperia/windows-notch-overlay/issues
 [bug-url]: https://github.com/Taxperia/windows-notch-overlay/issues/new?template=bug_report.yml
 [feature-url]: https://github.com/Taxperia/windows-notch-overlay/issues/new?template=feature_request.yml
-[electron-shield]: https://img.shields.io/badge/Electron-42-47848F?style=for-the-badge&logo=electron&logoColor=white
+[electron-shield]: https://img.shields.io/badge/Electron-45-47848F?style=for-the-badge&logo=electron&logoColor=white
 [electron-url]: https://www.electronjs.org/
-[node-shield]: https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white
+[node-shield]: https://img.shields.io/badge/Node.js-22.12%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white
 [node-url]: https://nodejs.org/
 [dotnet-shield]: https://img.shields.io/badge/.NET-8-512BD4?style=for-the-badge&logo=dotnet&logoColor=white
 [dotnet-url]: https://dotnet.microsoft.com/
