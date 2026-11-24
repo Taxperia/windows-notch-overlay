@@ -65,3 +65,45 @@ test('live activity toggles default on and only accept booleans', () => {
   assert.equal(result.liveActivities.brightness, true);
   assert.equal(result.liveActivities.unknown, undefined);
 });
+
+test('game metric preferences persist independently and reject invalid types', () => {
+  const result = appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, {
+    gaming: { showFps: false, showCpu: false, showRam: true, showGpu: 'yes', customProcesses: ' custom.exe ', unknown: true }
+  });
+  assert.equal(result.gaming.showFps, false);
+  assert.equal(result.gaming.showCpu, false);
+  assert.equal(result.gaming.showRam, true);
+  assert.equal(result.gaming.showGpu, true);
+  assert.equal(result.gaming.customProcesses, 'custom.exe');
+  assert.equal(result.gaming.unknown, undefined);
+  assert.equal(appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, { gaming: { customProcesses: 'a'.repeat(3000) } }).gaming.customProcesses.length, 2048);
+});
+
+test('media player style, media window bounds and brightness memory are validated', () => {
+  const defaults = appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, {});
+  assert.equal(defaults.appearance.mediaPlayerStyle, 'modern');
+  assert.deepEqual(defaults.system.hardwareBrightnessMemory, { level: -1, reported: -1 });
+  assert.equal(defaults.system.mediaWindow.positioned, false);
+  assert.equal(defaults.system.mediaWindow.alwaysOnTop, true);
+
+  const result = appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, {
+    appearance: { mediaPlayerStyle: 'theme' },
+    system: {
+      hardwareBrightnessMemory: { level: 100, reported: 75 },
+      mediaWindow: { x: 1200, y: 40, width: 5000, height: 20, positioned: true, alwaysOnTop: false }
+    }
+  });
+  assert.equal(result.appearance.mediaPlayerStyle, 'theme');
+  assert.deepEqual(result.system.hardwareBrightnessMemory, { level: 100, reported: 75 });
+  assert.equal(result.system.mediaWindow.width, appSettings.MEDIA_WINDOW_LIMITS.maxWidth);
+  assert.equal(result.system.mediaWindow.height, appSettings.MEDIA_WINDOW_LIMITS.minHeight);
+  assert.equal(result.system.mediaWindow.x, 1200);
+  assert.equal(result.system.mediaWindow.alwaysOnTop, false);
+
+  const invalid = appSettings.mergeSettings(appSettings.DEFAULT_SETTINGS, {
+    appearance: { mediaPlayerStyle: 'neon' },
+    system: { hardwareBrightnessMemory: { level: 400, reported: -50 } }
+  });
+  assert.equal(invalid.appearance.mediaPlayerStyle, 'modern');
+  assert.deepEqual(invalid.system.hardwareBrightnessMemory, { level: 100, reported: -1 });
+});

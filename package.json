@@ -16,7 +16,8 @@
     "build:notification-helper": "dotnet publish src/helpers/notifications/NotificationHelper.csproj -c Release -r win-x64 --self-contained false -o src/helpers/notifications/publish",
     "build:helpers": "npm run build:media-helper && npm run build:notification-helper",
     "build:win": "npm run build:helpers && electron-builder --win portable",
-    "dist": "npm run build:helpers && electron-builder --win nsis"
+    "dist": "npm run build:helpers && electron-builder --win nsis",
+    "record:demo": "electron scripts/record-demo.js"
   },
   "keywords": [
     "electron",
@@ -35,15 +36,15 @@
   },
   "homepage": "https://github.com/Taxperia/windows-notch-overlay#readme",
   "dependencies": {
-    "koffi": "^3.3.5"
+    "koffi": "^3.3.8"
   },
   "devDependencies": {
-    "electron": "^45.2.3",
-    "electron-builder": "^26.18.0"
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.1"
   },
   "overrides": {
-    "global-agent": "4.1.3",
-    "minimatch": "11.0.4"
+    "global-agent": "4.1.8",
+    "minimatch": "11.0.9"
   },
   "build": {
     "appId": "com.local.windowsnotchoverlay",

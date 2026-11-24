@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     language: 'tr',
     settingsMode: 'advanced',
     mediaSource: 'spotify',
+    mediaPlayerStyle: 'modern',
     transparentCompactStrip: false,
     compactIdleDelaySeconds: 5,
     compactIdleOpacity: 45,
@@ -54,6 +55,18 @@ const DEFAULT_SETTINGS = Object.freeze({
   system: {
     startWithWindows: false,
     softwareBrightnessLevel: 100,
+    hardwareBrightnessMemory: {
+      level: -1,
+      reported: -1
+    },
+    mediaWindow: {
+      x: 0,
+      y: 0,
+      width: 420,
+      height: 236,
+      positioned: false,
+      alwaysOnTop: true
+    },
     weatherCity: 'Istanbul',
     settingsOpenMode: 'overlay',
     microphoneDeviceId: 'default',
@@ -84,6 +97,15 @@ const DEFAULT_SETTINGS = Object.freeze({
     audioOutput: true,
     power: true,
     privacy: true
+  },
+  gaming: {
+    enabled: true,
+    showFps: true,
+    showCpu: true,
+    showGpu: true,
+    showGpuTemp: false,
+    showRam: false,
+    customProcesses: ''
   },
   integrations: {
     discord: {
@@ -172,6 +194,13 @@ const MAX_SETTINGS_BYTES = 64 * 1024;
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 const LANGUAGE_PATTERN = /^[a-z0-9_-]{1,16}$/i;
 const HOTKEY_PATTERN = /^[a-z0-9+\- ]{1,32}$/i;
+const MEDIA_PLAYER_STYLES = ['theme', 'modern'];
+const MEDIA_WINDOW_LIMITS = Object.freeze({
+  minWidth: 300,
+  maxWidth: 960,
+  minHeight: 150,
+  maxHeight: 640
+});
 
 function settingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
@@ -255,6 +284,7 @@ function normalizeSettings(settings) {
     : DEFAULT_SETTINGS.appearance.language;
   appearance.settingsMode = enumValue(appearance.settingsMode, ['compact', 'advanced'], DEFAULT_SETTINGS.appearance.settingsMode);
   appearance.mediaSource = enumValue(appearance.mediaSource, ['spotify', 'active', 'any'], DEFAULT_SETTINGS.appearance.mediaSource);
+  appearance.mediaPlayerStyle = enumValue(appearance.mediaPlayerStyle, MEDIA_PLAYER_STYLES, DEFAULT_SETTINGS.appearance.mediaPlayerStyle);
   appearance.alarmTone = enumValue(appearance.alarmTone, ['classic', 'soft', 'urgent'], DEFAULT_SETTINGS.appearance.alarmTone);
   appearance.colorTheme = enumValue(appearance.colorTheme, ['default', 'slate', 'contrast', 'light', 'forest', 'ruby', 'custom'], DEFAULT_SETTINGS.appearance.colorTheme);
   appearance.notchStyle = enumValue(appearance.notchStyle, ['attached', 'floating', 'pill', 'compact'], DEFAULT_SETTINGS.appearance.notchStyle);
@@ -279,12 +309,20 @@ function normalizeSettings(settings) {
   });
 
   system.weatherCity = boundedString(system.weatherCity, DEFAULT_SETTINGS.system.weatherCity, 80);
+  normalized.gaming.customProcesses = boundedString(normalized.gaming.customProcesses, '', 2048);
   system.settingsOpenMode = enumValue(system.settingsOpenMode, ['overlay', 'window'], DEFAULT_SETTINGS.system.settingsOpenMode);
   system.microphoneDeviceId = boundedString(system.microphoneDeviceId, 'default', 512);
   system.microphoneDeviceLabel = boundedString(system.microphoneDeviceLabel, '', 256);
   system.microphoneEndpointId = boundedString(system.microphoneEndpointId, '', 512);
   system.cameraDeviceId = boundedString(system.cameraDeviceId, 'default', 512);
   system.softwareBrightnessLevel = clampInteger(system.softwareBrightnessLevel, 0, 100, 100);
+  system.hardwareBrightnessMemory.level = clampInteger(system.hardwareBrightnessMemory.level, -1, 100, -1);
+  system.hardwareBrightnessMemory.reported = clampInteger(system.hardwareBrightnessMemory.reported, -1, 100, -1);
+  const mediaWindow = system.mediaWindow;
+  mediaWindow.width = clampInteger(mediaWindow.width, MEDIA_WINDOW_LIMITS.minWidth, MEDIA_WINDOW_LIMITS.maxWidth, DEFAULT_SETTINGS.system.mediaWindow.width);
+  mediaWindow.height = clampInteger(mediaWindow.height, MEDIA_WINDOW_LIMITS.minHeight, MEDIA_WINDOW_LIMITS.maxHeight, DEFAULT_SETTINGS.system.mediaWindow.height);
+  mediaWindow.x = clampInteger(mediaWindow.x, -32000, 32000, 0);
+  mediaWindow.y = clampInteger(mediaWindow.y, -32000, 32000, 0);
   system.screenVideo.width = clampInteger(system.screenVideo.width, 240, 1920, DEFAULT_SETTINGS.system.screenVideo.width);
   system.screenVideo.height = clampInteger(system.screenVideo.height, 135, 1080, DEFAULT_SETTINGS.system.screenVideo.height);
   system.screenVideo.url = normalizeHttpsUrl(system.screenVideo.url);
@@ -375,6 +413,7 @@ async function updateSettings(patch) {
 
 module.exports = {
   DEFAULT_SETTINGS,
+  MEDIA_WINDOW_LIMITS,
   loadSettings,
   mergeSettings,
   normalizeSettings,

@@ -48,6 +48,11 @@ const ShellExecute = shell32.func(
 const EnumWindowsProc = koffi.proto('bool __stdcall EnumWindowsProc(HWND hWnd, intptr_t lParam)');
 const EnumWindows = user32.func('bool __stdcall EnumWindows(EnumWindowsProc *lpEnumFunc, intptr_t lParam)');
 const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(HWND hWnd)');
+const GetAsyncKeyState = user32.func('int16_t __stdcall GetAsyncKeyState(int vKey)');
+const GetSystemMetrics = user32.func('int __stdcall GetSystemMetrics(int nIndex)');
+const VK_LBUTTON = 0x01;
+const VK_RBUTTON = 0x02;
+const SM_SWAPBUTTON = 23;
 const SYSTEM_POWER_STATUS = koffi.struct('SYSTEM_POWER_STATUS', {
   ACLineStatus: 'uint8_t',
   BatteryFlag: 'uint8_t',
@@ -301,12 +306,24 @@ function getCapabilityUsers(capability) {
   }
 }
 
+// GetAsyncKeyState fiziksel tuşları okur; sol/sağ tuşu değiştirilmiş farelerde birincil tuş sağ tuştur.
+function isPrimaryMouseButtonDown() {
+  try {
+    const key = GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON;
+    return (GetAsyncKeyState(key) & 0x8000) !== 0;
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   broadcastSettingChange,
   getActiveWindowInfo,
   getCapabilityUsers,
   getPowerStatus,
+  getProcessPath,
   getWindowsByProcessName,
+  isPrimaryMouseButtonDown,
   runElevated,
   sendHotkey,
   sendVirtualKey

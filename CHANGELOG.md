@@ -2,6 +2,25 @@
 
 This file summarizes notable user-facing changes made after the previous GitHub release.
 
+## Unreleased
+
+### Added
+
+- Added a detached media player window: open it from the notch media view, the media row, or Settings, drag it anywhere, resize it from any edge or corner, and pin it above other windows. Its position, size, and pin state are remembered.
+- Added a "Modern card" media player design (blurred album-art background, inline title and artist, seek bar, shuffle and repeat) next to the theme-matched design. The choice in Settings → Theme applies to both the notch and the detached window.
+- Added seeking, shuffle, and repeat control through the Windows media helper when the playing app supports them.
+- The audio mixer and notification center now show each app's own icon instead of a letter: mixer rows use the icon of the app's executable, and notifications use the sending app's registered logo (packaged app logo, toast registration icon, or Start menu icon). Letters remain as a fallback.
+
+### Changed
+
+- Turning download/upload speed or ping on or off now animates: the compact strip widens or narrows smoothly and the values fade in one by one (or fade out) instead of popping in. The strip no longer rewrites these values every second when they have not changed.
+
+### Fixed
+
+- Fixed the audio mixer failing with `GetDefaultAudioEndpoint render failed: 0x80070490` when no default output device exists (for example while Bluetooth headphones connect). It now lists sessions on every active output device, shows a clear message when there is none, and refreshes automatically when a device appears.
+- Fixed brightness showing an old value after restarting on DDC/CI monitors that accept brightness changes but always report the same reading. The last chosen level is remembered until the monitor reports a different value.
+- Brightness changes now retry briefly when the DDC/CI link is busy instead of falling back to software dimming on the first failure.
+
 ## 0.2.0 - 2026-07-30
 
 ### Added

@@ -1,0 +1,64 @@
+/* Ayrı medya penceresi: şeffaf, çerçevesiz pencere; kenar boşluğu gölge ve boyutlandırma tutamaçları içindir. */
+:root {
+  --mw-gap: 6px;
+  color-scheme: dark;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.media-window {
+  position: fixed;
+  inset: var(--mw-gap);
+  border-radius: 18px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.38);
+}
+
+.mw-resize {
+  position: fixed;
+  z-index: 10;
+  -webkit-app-region: no-drag;
+}
+
+.mw-resize[data-edge="n"],
+.mw-resize[data-edge="s"] {
+  left: 16px;
+  right: 16px;
+  height: 9px;
+  cursor: ns-resize;
+}
+
+.mw-resize[data-edge="n"] { top: 0; }
+.mw-resize[data-edge="s"] { bottom: 0; }
+
+.mw-resize[data-edge="e"],
+.mw-resize[data-edge="w"] {
+  top: 16px;
+  bottom: 16px;
+  width: 9px;
+  cursor: ew-resize;
+}
+
+.mw-resize[data-edge="e"] { right: 0; }
+.mw-resize[data-edge="w"] { left: 0; }
+
+.mw-resize[data-edge="ne"],
+.mw-resize[data-edge="nw"],
+.mw-resize[data-edge="se"],
+.mw-resize[data-edge="sw"] {
+  width: 16px;
+  height: 16px;
+}
+
+.mw-resize[data-edge="ne"] { top: 0; right: 0; cursor: nesw-resize; }
+.mw-resize[data-edge="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
+.mw-resize[data-edge="nw"] { top: 0; left: 0; cursor: nwse-resize; }
+.mw-resize[data-edge="se"] { bottom: 0; right: 0; cursor: nwse-resize; }

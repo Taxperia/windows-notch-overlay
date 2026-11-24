@@ -95,8 +95,36 @@ function normalizeWinRtMedia(payload) {
     thumbnailDataUrl: payload.thumbnailDataUrl || '',
     durationMs,
     positionMs,
-    startedAt: status === 'playing' ? Date.now() - positionMs : null
+    startedAt: status === 'playing' ? Date.now() - positionMs : null,
+    shuffle: typeof payload.shuffle === 'boolean' ? payload.shuffle : null,
+    repeat: ['none', 'track', 'list'].includes(payload.repeat) ? payload.repeat : null,
+    canShuffle: payload.canShuffle === true,
+    canRepeat: payload.canRepeat === true,
+    canSeek: payload.canSeek === true && durationMs > 0,
+    canPrevious: payload.canPrevious !== false,
+    canNext: payload.canNext !== false
   };
+}
+
+const KEY_COMMANDS = new Set(['previous', 'playPause', 'next']);
+const HELPER_ONLY_COMMANDS = new Set(['shuffle', 'repeat', 'seek']);
+const MAX_SEEK_MS = 24 * 60 * 60 * 1000;
+
+function normalizeMediaCommand(command, options = {}) {
+  const name = String(command || '');
+  if (!KEY_COMMANDS.has(name) && !HELPER_ONLY_COMMANDS.has(name)) {
+    throw new Error('Geçersiz medya komutu.');
+  }
+
+  if (name !== 'seek') {
+    return { name, args: [] };
+  }
+
+  const positionMs = Number(options.positionMs);
+  if (!Number.isFinite(positionMs) || positionMs < 0 || positionMs > MAX_SEEK_MS) {
+    throw new Error('Geçersiz sarma konumu.');
+  }
+  return { name, args: [`--position=${Math.round(positionMs)}`] };
 }
 
 async function getWinRtMedia(preferredSource = 'spotify') {
@@ -114,7 +142,7 @@ async function getWinRtMedia(preferredSource = 'spotify') {
   return normalizeWinRtMedia(payload);
 }
 
-async function sendWinRtMediaCommand(command, preferredSource = 'spotify') {
+async function sendWinRtMediaCommand(command, preferredSource = 'spotify', extraArgs = []) {
   const mediaHelperPath = helperPath();
   if (!mediaHelperPath) {
     return null;
@@ -122,7 +150,7 @@ async function sendWinRtMediaCommand(command, preferredSource = 'spotify') {
 
   const output = await runHelper(
     mediaHelperPath,
-    [...mediaSourceArgs(preferredSource), `--command=${command}`],
+    [...mediaSourceArgs(preferredSource), `--command=${command}`, ...extraArgs],
     4000
   );
   const payload = JSON.parse(output);
@@ -130,12 +158,10 @@ async function sendWinRtMediaCommand(command, preferredSource = 'spotify') {
 }
 
 async function sendMediaCommand(command, options = {}) {
-  if (!['previous', 'playPause', 'next'].includes(command)) {
-    throw new Error('Geçersiz medya komutu.');
-  }
+  const normalized = normalizeMediaCommand(command, options);
 
   try {
-    const media = await sendWinRtMediaCommand(command, options.preferredSource);
+    const media = await sendWinRtMediaCommand(normalized.name, options.preferredSource, normalized.args);
     if (media) {
       return media;
     }
@@ -143,7 +169,9 @@ async function sendMediaCommand(command, options = {}) {
     // Fall back to the global media key path if the helper cannot command a session.
   }
 
-  await sendMediaKey(command);
+  if (KEY_COMMANDS.has(normalized.name)) {
+    await sendMediaKey(normalized.name);
+  }
   return null;
 }
 
@@ -292,5 +320,7 @@ async function getCurrentMedia(options = {}) {
 
 module.exports = {
   getCurrentMedia,
+  normalizeMediaCommand,
+  normalizeWinRtMedia,
   sendMediaCommand
 };

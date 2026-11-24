@@ -18,6 +18,12 @@ Keep system controls, media, productivity tools, notifications, and live telemet
 
 [View releases][releases-url] · [Report a bug][bug-url] · [Request a feature][feature-url]
 
+<br />
+
+<img src="docs/media/demo.gif" width="860" alt="Demo: the collapsed notch shows a volume live activity and a microphone privacy indicator, then download, upload and ping are switched on and off with an animation; on hover the control center opens, a notification scrolls in and the notification center lists it with app icons; the Spotify media card is popped out into a draggable, resizable window and shown in both designs and several themes; the per-app volume mixer and a Pomodoro timer are used; finally the Attached, Floating, Pill and Compact notch styles are shown." />
+
+<sub>[Watch the higher-quality MP4](docs/media/demo.mp4)</sub>
+
 </div>
 
 > [!IMPORTANT]
@@ -240,6 +246,16 @@ npm run dist
 ~~~
 
 Generated output is written to <code>dist/</code>. Helper build output under each helper's <code>bin/</code>, <code>obj/</code>, and <code>publish/</code> directories is intentionally ignored by Git.
+
+### Demo recording
+
+The demo at the top of this README is generated, not screen-recorded. The script runs the real renderer UI offscreen with sample data, drives it with simulated mouse input, and encodes the result with [FFmpeg](https://ffmpeg.org/) (which must be on <code>PATH</code>, or set <code>FFMPEG_PATH</code>):
+
+~~~powershell
+npm run record:demo
+~~~
+
+It writes <code>docs/media/demo.gif</code> and <code>docs/media/demo.mp4</code>. Your real settings, devices, and media sessions are not used; the volume mixer only borrows the icons of apps installed on the recording machine.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

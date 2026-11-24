@@ -1322,7 +1322,12 @@ async function getBrightnessState() {
     };
   }
 
-  const external = getExternalBrightnessState();
+  let external = getExternalBrightnessState();
+  if (!external.available) {
+    // DDC/CI hattı anlık meşgul olabilir (ör. hemen önce yazıldıysa); bir kez daha dene.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    external = getExternalBrightnessState();
+  }
   if (external.available) {
     return {
       ...external,

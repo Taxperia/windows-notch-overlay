@@ -1,0 +1,826 @@
+/* Ortak medya oynatıcı: çentik içi medya sahnesi ve ayrı medya penceresi. */
+
+.mp,
+.mp *,
+.mp *::before,
+.mp *::after {
+  box-sizing: border-box;
+}
+
+.mp {
+  --mp-accent: var(--mp-cover-accent, #1db954);
+  --mp-progress: 0%;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--text, #f4f7fb);
+  container-type: inline-size;
+  font-family: inherit;
+}
+
+.mp[data-context="window"] {
+  container-type: size;
+}
+
+.mp button {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mp button:disabled {
+  cursor: default;
+}
+
+.mp svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mp-backdrop,
+.mp-repeat-one {
+  display: none;
+}
+
+.mp-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  transition: background-color 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+
+.mp-icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mp-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-device {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* Bağlama göre görünen düğmeler. */
+.mp[data-context="notch"] .mp-pin,
+.mp[data-context="notch"] .mp-close,
+.mp[data-context="window"] .mp-back,
+.mp[data-context="window"] .mp-detach {
+  display: none;
+}
+
+.mp-detach[aria-pressed="true"] {
+  color: var(--mp-accent);
+}
+
+.mp-pin[aria-pressed="false"] {
+  opacity: 0.55;
+}
+
+.mp-pin[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+
+.mp-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  background: #1db954;
+  color: #06130a;
+  font-weight: 700;
+}
+
+.mp-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mp-cover-img[hidden],
+.mp-backdrop-img[hidden],
+.mp.has-cover .mp-cover-text {
+  display: none;
+}
+
+.mp.has-cover .mp-cover {
+  background: var(--surface, #171b22);
+}
+
+.mp-info {
+  min-width: 0;
+}
+
+.mp-app {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted, rgba(244, 247, 251, 0.68));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.mp-app-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.mp-app-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.mp-app-icon.is-spotify svg {
+  stroke: none;
+}
+
+.mp-app-icon.is-spotify .mp-glyph-fill {
+  fill: #1db954;
+}
+
+.mp-app-icon.is-spotify .mp-glyph-cut {
+  fill: none;
+  stroke: #06130a;
+  stroke-width: 1.8;
+}
+
+.mp-title,
+.mp-artist {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-timeline {
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-elapsed { grid-area: elapsed; }
+.mp-duration { grid-area: duration; }
+
+.mp-track {
+  grid-area: track;
+  position: relative;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  outline: none;
+  touch-action: none;
+}
+
+.mp[data-can-seek="true"] .mp-track {
+  cursor: pointer;
+}
+
+.mp-rail {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text, #fff) 18%, transparent);
+}
+
+.mp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--mp-progress);
+  border-radius: inherit;
+  background: #1db954;
+  transition: width 240ms linear;
+}
+
+.mp.is-seeking .mp-fill,
+.mp.is-seeking .mp-thumb {
+  transition: none;
+}
+
+.mp-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--mp-progress);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--mp-accent);
+  transform: translate(-50%, -50%) scale(0);
+  transition: left 240ms linear, transform 140ms ease;
+  pointer-events: none;
+}
+
+.mp[data-can-seek="true"] .mp-track:hover .mp-thumb,
+.mp[data-can-seek="true"] .mp-track:focus-visible .mp-thumb,
+.mp.is-seeking .mp-thumb {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.mp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.mp-ctrl {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  transition: background-color 140ms ease, color 140ms ease, opacity 140ms ease, transform 120ms ease;
+}
+
+.mp-ctrl:not(:disabled):active {
+  transform: scale(0.94);
+}
+
+.mp-ctrl:disabled {
+  opacity: 0.38;
+}
+
+.mp-ctrl .mp-icon-pause,
+.mp-ctrl[data-state="pause"] .mp-icon-play {
+  display: none;
+}
+
+.mp-ctrl[data-state="pause"] .mp-icon-pause {
+  display: block;
+}
+
+.mp[data-style="modern"] .mp-ctrl[data-mp-command="previous"] svg,
+.mp[data-style="modern"] .mp-ctrl[data-mp-command="next"] svg,
+.mp[data-style="modern"] .mp-play svg {
+  fill: currentColor;
+}
+
+.mp-shuffle[aria-pressed="true"],
+.mp-repeat[aria-pressed="true"] {
+  color: var(--mp-accent);
+}
+
+.mp-shuffle[aria-pressed="true"]::after,
+.mp-repeat[aria-pressed="true"]::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.mp-repeat[data-repeat="track"] .mp-repeat-one {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.mp-waves {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 50px;
+}
+
+.mp-waves span {
+  width: 3px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.mp[data-playing="true"] .mp-waves span {
+  background: #1db954;
+  animation: mp-wave 760ms ease-in-out infinite;
+}
+
+.mp[data-playing="true"] .mp-waves span:nth-child(2) { animation-delay: 90ms; }
+.mp[data-playing="true"] .mp-waves span:nth-child(3) { animation-delay: 180ms; }
+.mp[data-playing="true"] .mp-waves span:nth-child(4) { animation-delay: 270ms; }
+.mp[data-playing="true"] .mp-waves span:nth-child(5) { animation-delay: 360ms; }
+.mp[data-playing="true"] .mp-waves span:nth-child(6) { animation-delay: 450ms; }
+
+@keyframes mp-wave {
+  0%,
+  100% {
+    height: 9px;
+  }
+
+  50% {
+    height: 30px;
+  }
+}
+
+/* ---------- Tema uyumlu görünüm ---------- */
+
+.mp[data-style="theme"] {
+  /* Uygulamadaki diğer düğmelerin hover'ı neredeyse görünmez; medya düğmelerinde temaya uyan belirgin bir açılma. */
+  --mp-hover: color-mix(in srgb, var(--surface) 80%, var(--text) 20%);
+  --mp-accent: #1db954;
+}
+
+.mp[data-style="theme"] .mp-content {
+  display: grid;
+  grid-template-columns: 32px 60px minmax(0, 1fr) 38px;
+  grid-template-areas:
+    "back cover info  waves"
+    "back cover time  waves"
+    "back cover ctrls waves";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 6px;
+  padding: 0 4px 8px;
+}
+
+/* Çentikte ayrı pencere butonu üst satırdadır (ayarlar dişlisinin yanında). */
+.mp[data-context="notch"][data-style="theme"] .mp-header-actions {
+  display: none;
+}
+
+.mp[data-style="theme"] .mp-header {
+  display: contents;
+}
+
+.mp[data-style="theme"] .mp-back {
+  grid-area: back;
+  width: 30px;
+  height: 30px;
+  background: var(--surface);
+}
+
+.mp[data-style="theme"] .mp-back svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mp[data-style="theme"] .mp-back:hover,
+.mp[data-style="theme"] .mp-icon-btn:hover {
+  background: var(--mp-hover);
+}
+
+.mp[data-style="theme"] .mp-device,
+.mp[data-style="theme"] .mp-app-icon,
+.mp[data-style="theme"] .mp-backdrop {
+  display: none;
+}
+
+.mp[data-style="theme"] .mp-cover {
+  grid-area: cover;
+  width: 60px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 26px;
+}
+
+.mp[data-style="theme"] .mp-info {
+  grid-area: info;
+  display: grid;
+  gap: 6px;
+}
+
+.mp[data-style="theme"] .mp-line {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mp[data-style="theme"] .mp-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.08;
+}
+
+.mp[data-style="theme"] .mp-artist {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mp[data-style="theme"] .mp-waves {
+  grid-area: waves;
+}
+
+.mp[data-style="theme"] .mp-timeline {
+  grid-area: time;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  grid-template-areas: "elapsed track duration";
+  gap: 6px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mp[data-style="theme"] .mp-duration {
+  text-align: right;
+}
+
+.mp[data-style="theme"] .mp-controls {
+  grid-area: ctrls;
+  gap: 7px;
+}
+
+.mp[data-style="theme"] .mp-ctrl {
+  width: 32px;
+  height: 32px;
+  background: var(--surface);
+}
+
+.mp[data-style="theme"] .mp-ctrl:not(:disabled):hover {
+  background: var(--mp-hover);
+}
+
+.mp[data-style="theme"] .mp-ctrl svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mp[data-style="theme"] .mp-play {
+  background: #1db954;
+  color: #06130a;
+}
+
+/* Yeşil oynat düğmesi hover'da maviye dönmek yerine açık yeşile geçer. */
+.mp[data-style="theme"] .mp-play:not(:disabled):hover {
+  background: #1ed760;
+}
+
+.mp[data-style="theme"] .mp-ctrl:is(.mp-shuffle, .mp-repeat)[data-supported="false"] {
+  display: none;
+}
+
+/* Tema uyumlu görünüm, ayrı pencerede. */
+.mp[data-context="window"][data-style="theme"] {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-content {
+  height: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "cover info"
+    "cover time"
+    "cover ctrls";
+  column-gap: clamp(10px, 4cqw, 18px);
+  row-gap: clamp(6px, 3cqh, 12px);
+  padding: clamp(10px, 6cqh, 22px) clamp(12px, 4.5cqw, 22px);
+}
+
+/* Başlık satır kaplamaz; sabitle/kapat düğmeleri sağ üst köşede durur. */
+.mp[data-context="window"][data-style="theme"] .mp-header {
+  position: absolute;
+  top: clamp(6px, 3cqh, 12px);
+  right: clamp(6px, 2.4cqw, 12px);
+  z-index: 1;
+  display: flex;
+  color: var(--muted);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-cover {
+  width: clamp(64px, 50cqh, 240px);
+  max-width: 38cqw;
+  align-self: center;
+  font-size: clamp(24px, 14cqh, 64px);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-info {
+  align-self: end;
+  padding-right: 58px;
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-title {
+  font-size: clamp(15px, 8cqh, 30px);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-artist {
+  font-size: clamp(11px, 5cqh, 18px);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-ctrl {
+  width: clamp(30px, 15cqh, 56px);
+  height: clamp(30px, 15cqh, 56px);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-ctrl svg {
+  width: clamp(14px, 7cqh, 24px);
+  height: clamp(14px, 7cqh, 24px);
+}
+
+.mp[data-context="window"][data-style="theme"] .mp-waves {
+  display: none;
+}
+
+/* ---------- Modern görünüm (kapak arka planlı kart) ---------- */
+
+.mp[data-style="modern"] {
+  --mp-fg: #ffffff;
+  --mp-fg-soft: rgba(255, 255, 255, 0.74);
+  --mp-fg-dim: rgba(255, 255, 255, 0.58);
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 18px;
+  background: #121417;
+  color: var(--mp-fg);
+}
+
+.mp[data-style="modern"] .mp-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--mp-accent) 55%, transparent), transparent 60%),
+    radial-gradient(120% 140% at 100% 100%, color-mix(in srgb, var(--mp-accent) 30%, #000), transparent 70%),
+    #16181c;
+}
+
+.mp[data-style="modern"] .mp-backdrop-img {
+  position: absolute;
+  inset: -18%;
+  width: 136%;
+  height: 136%;
+  object-fit: cover;
+  filter: blur(22px) saturate(1.35);
+  transform: scale(1.04);
+}
+
+.mp[data-style="modern"] .mp-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0.46) 55%, rgba(0, 0, 0, 0.6) 100%);
+}
+
+.mp[data-style="modern"] .mp-content {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "head"
+    "info"
+    "time"
+    "ctrls";
+  row-gap: 4px;
+  padding: 10px 14px 8px;
+}
+
+.mp[data-style="modern"] .mp-header {
+  grid-area: head;
+  color: var(--mp-fg-soft);
+}
+
+.mp[data-style="modern"] .mp-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--mp-fg);
+}
+
+.mp[data-style="modern"] .mp-back {
+  margin-left: -6px;
+}
+
+.mp[data-style="modern"] .mp-cover,
+.mp[data-style="modern"] .mp-app,
+.mp[data-style="modern"] .mp-waves {
+  display: none;
+}
+
+.mp[data-style="modern"] .mp-info {
+  grid-area: info;
+  align-self: end;
+}
+
+.mp[data-style="modern"] .mp-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.mp[data-style="modern"] .mp-line-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.mp[data-style="modern"] .mp-line-icon.is-spotify .mp-glyph-fill {
+  fill: rgba(255, 255, 255, 0.92);
+}
+
+.mp[data-style="modern"] .mp-line-icon.is-spotify .mp-glyph-cut {
+  stroke: rgba(0, 0, 0, 0.78);
+}
+
+.mp[data-style="modern"] .mp-title {
+  flex: 0 1 auto;
+  font-weight: 700;
+}
+
+.mp[data-style="modern"] .mp-artist {
+  flex: 1 1 0;
+  color: var(--mp-fg-soft);
+  font-weight: 500;
+}
+
+.mp[data-style="modern"].has-artist .mp-artist::before {
+  content: '•';
+  margin-right: 7px;
+  color: var(--mp-fg-dim);
+}
+
+.mp[data-style="modern"] .mp-timeline {
+  grid-area: time;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "track    track"
+    "elapsed  duration";
+  row-gap: 1px;
+  color: var(--mp-fg-dim);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mp[data-style="modern"] .mp-duration {
+  text-align: right;
+}
+
+.mp[data-style="modern"] .mp-track {
+  height: 16px;
+}
+
+.mp[data-style="modern"] .mp-rail {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.mp[data-style="modern"] .mp-fill {
+  background: var(--mp-accent);
+}
+
+.mp[data-style="modern"] .mp-thumb {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.mp[data-style="modern"][data-available="false"] .mp-thumb {
+  transform: translate(-50%, -50%) scale(0);
+}
+
+.mp[data-style="modern"] .mp-controls {
+  grid-area: ctrls;
+  justify-content: space-between;
+  padding: 0 6%;
+}
+
+.mp[data-style="modern"] .mp-ctrl {
+  width: 36px;
+  height: 36px;
+  color: var(--mp-fg);
+}
+
+.mp[data-style="modern"] .mp-ctrl:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.mp[data-style="modern"] .mp-ctrl svg {
+  width: 19px;
+  height: 19px;
+}
+
+.mp[data-style="modern"] .mp-play svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mp[data-style="modern"] .mp-shuffle[aria-pressed="true"],
+.mp[data-style="modern"] .mp-repeat[aria-pressed="true"] {
+  color: var(--mp-accent);
+}
+
+/* Modern görünüm, ayrı pencerede: boyut değiştikçe ölçeklenir. */
+.mp[data-context="window"][data-style="modern"] .mp-content {
+  row-gap: clamp(2px, 1.6cqh, 10px);
+  padding: clamp(10px, 5.5cqh, 26px) clamp(14px, 5cqw, 30px) clamp(8px, 4cqh, 22px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-device {
+  font-size: clamp(11px, 5cqh, 16px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-icon-btn {
+  width: clamp(26px, 12cqh, 38px);
+  height: clamp(26px, 12cqh, 38px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-icon-btn svg {
+  width: clamp(14px, 6.5cqh, 20px);
+  height: clamp(14px, 6.5cqh, 20px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-line {
+  font-size: clamp(13px, 6.6cqh, 26px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-line-icon svg {
+  width: clamp(16px, 7.6cqh, 28px);
+  height: clamp(16px, 7.6cqh, 28px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-timeline {
+  font-size: clamp(11px, 4.8cqh, 16px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-track {
+  height: clamp(14px, 7cqh, 22px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-rail {
+  height: clamp(3px, 1.4cqh, 5px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-thumb {
+  width: clamp(11px, 5.4cqh, 18px);
+  height: clamp(11px, 5.4cqh, 18px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-ctrl {
+  width: clamp(32px, 17cqh, 64px);
+  height: clamp(32px, 17cqh, 64px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-ctrl svg {
+  width: clamp(18px, 8.4cqh, 32px);
+  height: clamp(18px, 8.4cqh, 32px);
+}
+
+.mp[data-context="window"][data-style="modern"] .mp-play svg {
+  width: clamp(22px, 10.6cqh, 40px);
+  height: clamp(22px, 10.6cqh, 40px);
+}
+
+/* Ayrı pencerede sürükleme bölgesi. */
+.mp[data-context="window"] {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.mp[data-context="window"] button,
+.mp[data-context="window"] .mp-track {
+  -webkit-app-region: no-drag;
+}

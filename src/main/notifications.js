@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
+const { createIconCache, isSafeIconDataUrl } = require('./appIcons');
 
 function helperPath() {
   const candidates = [
@@ -29,6 +30,30 @@ function runHelper(command, args = [], timeoutMs = 3500) {
   });
 }
 
+// Uygulama logoları (AppUserModelId → data URL) bir kez okunur; logosu olmayan uygulamalar da boş
+// değerle saklanır ki her 5 sn'lik taramada tekrar denenmesin.
+const appLogoCache = createIconCache();
+
+function appIdsWithoutLogo(notifications) {
+  return [...new Set(notifications
+    .map((notification) => String(notification?.appId || ''))
+    .filter((appId) => appId && !appLogoCache.has(appId)))];
+}
+
+function withAppIcons(notifications) {
+  return notifications.map((notification) => {
+    const appIcon = appLogoCache.get(String(notification?.appId || '')) || '';
+    return appIcon ? { ...notification, appIcon } : notification;
+  });
+}
+
+function rememberLogos(appIds, logos) {
+  appIds.forEach((appId) => {
+    const logo = logos && typeof logos === 'object' ? logos[appId] : '';
+    appLogoCache.set(appId, isSafeIconDataUrl(logo) ? logo : '');
+  });
+}
+
 async function getNotificationSnapshot(options = {}) {
   const notificationHelperPath = helperPath();
   if (!notificationHelperPath) {
@@ -41,12 +66,27 @@ async function getNotificationSnapshot(options = {}) {
 
   try {
     const args = options.requestAccess ? ['--request'] : [];
-    const output = await runHelper(notificationHelperPath, args);
-    const payload = JSON.parse(output);
+    let payload = JSON.parse(await runHelper(notificationHelperPath, args));
+    let notifications = Array.isArray(payload?.notifications) ? payload.notifications : [];
+
+    const missing = appIdsWithoutLogo(notifications);
+    if (payload?.available === true && missing.length) {
+      try {
+        const withLogos = JSON.parse(await runHelper(notificationHelperPath, ['--with-logos'], 8000));
+        if (withLogos?.available === true && Array.isArray(withLogos.notifications)) {
+          payload = withLogos;
+          notifications = withLogos.notifications;
+        }
+        rememberLogos(missing, withLogos?.logos);
+      } catch {
+        rememberLogos(missing, null);
+      }
+    }
+
     return {
       available: payload?.available === true,
       status: payload?.status || 'unknown',
-      notifications: Array.isArray(payload?.notifications) ? payload.notifications : []
+      notifications: withAppIcons(notifications)
     };
   } catch {
     return {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Windows.Media;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
@@ -16,7 +17,14 @@ internal sealed record MediaPayload(
     string Status,
     double DurationMs,
     double PositionMs,
-    string? ThumbnailDataUrl
+    string? ThumbnailDataUrl,
+    bool? Shuffle = null,
+    string? Repeat = null,
+    bool CanShuffle = false,
+    bool CanRepeat = false,
+    bool CanSeek = false,
+    bool CanPrevious = true,
+    bool CanNext = true
 );
 
 internal static class Program
@@ -34,6 +42,7 @@ internal static class Program
             var sessions = manager.GetSessions();
             var source = SourcePreference(args);
             var command = CommandArg(args);
+            var positionMs = PositionArg(args);
             var session = SelectSession(manager, sessions, source);
 
             if (session is null)
@@ -44,7 +53,7 @@ internal static class Program
 
             if (!string.IsNullOrWhiteSpace(command))
             {
-                await ExecuteCommand(session, command);
+                await ExecuteCommand(session, command, positionMs);
                 await Task.Delay(160);
             }
 
@@ -71,6 +80,15 @@ internal static class Program
         return commandArg?.Split('=', 2).LastOrDefault();
     }
 
+    private static double? PositionArg(string[] args)
+    {
+        var positionArg = args.FirstOrDefault(arg => arg.StartsWith("--position=", StringComparison.OrdinalIgnoreCase));
+        var raw = positionArg?.Split('=', 2).LastOrDefault();
+        return double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value) && value >= 0
+            ? value
+            : null;
+    }
+
     private static GlobalSystemMediaTransportControlsSession? SelectSession(
         GlobalSystemMediaTransportControlsSessionManager manager,
         IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions,
@@ -85,11 +103,34 @@ internal static class Program
         };
     }
 
-    private static async Task ExecuteCommand(GlobalSystemMediaTransportControlsSession session, string command)
+    private static async Task ExecuteCommand(GlobalSystemMediaTransportControlsSession session, string command, double? positionMs)
     {
         var normalized = command.Trim().ToLowerInvariant();
         switch (normalized)
         {
+            case "shuffle":
+                await session.TryChangeShuffleActiveAsync(!(session.GetPlaybackInfo().IsShuffleActive ?? false));
+                return;
+            case "repeat":
+                await session.TryChangeAutoRepeatModeAsync(NextRepeatMode(session.GetPlaybackInfo().AutoRepeatMode));
+                return;
+            case "seek":
+                {
+                    if (positionMs is null)
+                    {
+                        throw new InvalidOperationException("Seek requires --position.");
+                    }
+
+                    var timeline = session.GetTimelineProperties();
+                    var target = timeline.StartTime + TimeSpan.FromMilliseconds(positionMs.Value);
+                    if (timeline.EndTime > timeline.StartTime && target > timeline.EndTime)
+                    {
+                        target = timeline.EndTime;
+                    }
+
+                    await session.TryChangePlaybackPositionAsync(target.Ticks);
+                    return;
+                }
             case "previous":
                 await session.TrySkipPreviousAsync();
                 return;
@@ -118,6 +159,27 @@ internal static class Program
         }
     }
 
+    private static MediaPlaybackAutoRepeatMode NextRepeatMode(MediaPlaybackAutoRepeatMode? current)
+    {
+        return current switch
+        {
+            MediaPlaybackAutoRepeatMode.List => MediaPlaybackAutoRepeatMode.Track,
+            MediaPlaybackAutoRepeatMode.Track => MediaPlaybackAutoRepeatMode.None,
+            _ => MediaPlaybackAutoRepeatMode.List
+        };
+    }
+
+    private static string? RepeatName(MediaPlaybackAutoRepeatMode? mode)
+    {
+        return mode switch
+        {
+            MediaPlaybackAutoRepeatMode.List => "list",
+            MediaPlaybackAutoRepeatMode.Track => "track",
+            MediaPlaybackAutoRepeatMode.None => "none",
+            _ => null
+        };
+    }
+
     private static async Task WriteSession(GlobalSystemMediaTransportControlsSession session)
     {
         var properties = await session.TryGetMediaPropertiesAsync();
@@ -138,7 +200,14 @@ internal static class Program
             status,
             durationMs,
             positionMs,
-            thumbnailDataUrl
+            thumbnailDataUrl,
+            playback.IsShuffleActive,
+            RepeatName(playback.AutoRepeatMode),
+            playback.Controls.IsShuffleEnabled,
+            playback.Controls.IsRepeatEnabled,
+            playback.Controls.IsPlaybackPositionEnabled,
+            playback.Controls.IsPreviousEnabled,
+            playback.Controls.IsNextEnabled
         ));
     }
 

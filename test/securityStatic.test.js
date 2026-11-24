@@ -37,14 +37,26 @@ test('renderer cannot ask the main process to open arbitrary local paths', () =>
 });
 
 test('renderer CSP keeps executable and navigation capabilities closed', () => {
-  const html = read('src/renderer/index.html');
-  for (const directive of [
-    "script-src 'self'",
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'none'",
-    "frame-ancestors 'none'"
-  ]) {
-    assert.match(html, new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  for (const page of ['src/renderer/index.html', 'src/renderer/media-window.html']) {
+    const html = read(page);
+    for (const directive of [
+      "script-src 'self'",
+      "object-src 'none'",
+      "base-uri 'none'",
+      "form-action 'none'",
+      "frame-ancestors 'none'"
+    ]) {
+      assert.match(html, new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${page}: ${directive}`);
+    }
   }
+});
+
+test('the media window bridge only exposes media and window channels', () => {
+  const preload = read('src/media-preload.js');
+  const channels = [...preload.matchAll(/ipcRenderer\.(?:invoke|send|on)\('([^']+)'/g)].map((match) => match[1]);
+  const subscribed = [...preload.matchAll(/subscribe\('([^']+)'/g)].map((match) => match[1]);
+  for (const channel of [...channels, ...subscribed]) {
+    assert.match(channel, /^(media:|media-window:|settings:get$|settings:update$)/, channel);
+  }
+  assert.doesNotMatch(preload, /settings:update'\s*,\s*patch|quick:action|external-app|search:web/);
 });

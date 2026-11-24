@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Windows Notch Overlay demo stage</title>
+    <link rel="stylesheet" href="./stage.css" />
+  </head>
+  <body>
+    <div class="wallpaper" aria-hidden="true">
+      <span class="blob blob-a"></span>
+      <span class="blob blob-b"></span>
+      <span class="blob blob-c"></span>
+    </div>
+
+    <div id="intro" class="intro">
+      <strong>Windows Notch Overlay</strong>
+      <span>A notch-style control center for Windows</span>
+    </div>
+
+    <iframe id="notchFrame" class="notch-frame" src="../../src/renderer/index.html" title="Notch"></iframe>
+    <iframe id="mediaFrame" class="media-frame" title="Media window" hidden></iframe>
+
+    <div id="caption" class="caption" aria-live="polite"></div>
+    <div id="cursor" class="cursor" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M4 2.5v17.2l4.6-4.3 2.9 6.6 3-1.3-2.9-6.5h6.3L4 2.5Z" /></svg>
+      <span class="ripple"></span>
+    </div>
+
+    <script src="./stage.js"></script>
+  </body>
+</html>

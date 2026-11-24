@@ -148,33 +148,121 @@ function normalizeSessionName(displayName, sessionId, pid, isSystemSounds) {
   return pid ? `Uygulama ${pid}` : 'Bilinmeyen uygulama';
 }
 
-function createRenderSessionManager() {
-  const enumerator = createEnumerator();
-  let device = null;
+// Varsayılan çıkış cihazı olmayabilir (Bluetooth kulaklık ayrılırken/bağlanırken GetDefaultAudioEndpoint
+// 0x80070490 ERROR_NOT_FOUND döner). Bu yüzden önce tüm rollerdeki varsayılan aranır, ardından aktif
+// tüm çıkış cihazları listelenir; varsayılan olan başa alınır.
+function defaultRenderDeviceId(enumerator) {
+  for (const role of [0, 1, 2]) {
+    const deviceOut = [null];
+    let hr = -1;
+    try {
+      hr = callMethod(enumerator, 4, GetDefaultAudioEndpoint, E_RENDER, role, deviceOut);
+    } catch {
+      hr = -1;
+    }
+    if (!failed(hr) && deviceOut[0]) {
+      try {
+        return decodeDeviceId(deviceOut[0]);
+      } catch {
+        // Try the next role.
+      } finally {
+        release(deviceOut[0]);
+      }
+    }
+  }
+  return '';
+}
+
+function readDeviceName(device) {
+  const storeOut = [null];
+  try {
+    if (failed(callMethod(device, 4, OpenPropertyStore, STGM_READ, storeOut)) || !storeOut[0]) {
+      return '';
+    }
+    return readDeviceProperty(storeOut[0], PKEY_DEVICE_FRIENDLY_NAME) || '';
+  } catch {
+    return '';
+  } finally {
+    release(storeOut[0]);
+  }
+}
+
+function listActiveRenderDevices(enumerator) {
+  const defaultId = defaultRenderDeviceId(enumerator);
+  const collectionOut = [null];
+  const devices = [];
+  try {
+    if (failed(callMethod(enumerator, 3, EnumAudioEndpoints, E_RENDER, DEVICE_STATE_ACTIVE, collectionOut)) || !collectionOut[0]) {
+      return devices;
+    }
+
+    const count = [0];
+    if (failed(callMethod(collectionOut[0], 3, GetCount, count))) {
+      return devices;
+    }
+
+    for (let index = 0; index < count[0]; index += 1) {
+      const deviceOut = [null];
+      if (failed(callMethod(collectionOut[0], 4, Item, index, deviceOut)) || !deviceOut[0]) {
+        continue;
+      }
+      try {
+        const id = decodeDeviceId(deviceOut[0]);
+        devices.push({
+          pointer: deviceOut[0],
+          id,
+          name: readDeviceName(deviceOut[0]),
+          isDefault: Boolean(defaultId) && id === defaultId
+        });
+      } catch {
+        release(deviceOut[0]);
+      }
+    }
+  } finally {
+    release(collectionOut[0]);
+  }
+
+  if (devices.length && !devices.some((device) => device.isDefault)) {
+    devices[0].isDefault = true;
+  }
+  return devices.sort((left, right) => Number(right.isDefault) - Number(left.isDefault));
+}
+
+function forEachDeviceSession(device, callback, results) {
   let manager = null;
+  let sessionEnumerator = null;
 
   try {
-    const deviceOut = [null];
-    checkHr(callMethod(enumerator, 4, GetDefaultAudioEndpoint, E_RENDER, 0, deviceOut), 'GetDefaultAudioEndpoint render');
-    device = deviceOut[0];
-
     const managerOut = [null];
     checkHr(
-      callMethod(device, 3, Activate, IID_IAUDIO_SESSION_MANAGER2, CLSCTX_ALL, null, managerOut),
+      callMethod(device.pointer, 3, Activate, IID_IAUDIO_SESSION_MANAGER2, CLSCTX_ALL, null, managerOut),
       'Activate IAudioSessionManager2'
     );
     manager = managerOut[0];
 
-    return {
-      enumerator,
-      device,
-      manager
-    };
-  } catch (error) {
+    const sessionEnumeratorOut = [null];
+    checkHr(callMethod(manager, 5, GetSessionEnumerator, sessionEnumeratorOut), 'GetSessionEnumerator');
+    sessionEnumerator = sessionEnumeratorOut[0];
+
+    const count = [0];
+    checkHr(callMethod(sessionEnumerator, 3, GetCount, count), 'GetCount audio sessions');
+
+    for (let index = 0; index < count[0]; index += 1) {
+      let control = null;
+      try {
+        const controlOut = [null];
+        if (failed(callMethod(sessionEnumerator, 4, GetSession, index, controlOut)) || !controlOut[0]) {
+          continue;
+        }
+        control = controlOut[0];
+        results.push(callback(control, index, device));
+      } finally {
+        release(control);
+      }
+    }
+  } finally {
+    release(sessionEnumerator);
     release(manager);
-    release(device);
-    release(enumerator);
-    throw error;
   }
 }
 
@@ -595,65 +683,92 @@ function readAudioSession(control, index) {
   }
 }
 
+// callback(control, index, device) her aktif çıkış cihazındaki her oturum için çağrılır.
+// Bir cihaz tarama sırasında kaybolursa (Bluetooth kopması) yalnızca o cihaz atlanır.
 function withAudioSessions(callback) {
   const didInitialize = initializeCom();
-  let context = null;
-  let sessionEnumerator = null;
+  let enumerator = null;
+  let devices = [];
 
   try {
-    context = createRenderSessionManager();
-    const sessionEnumeratorOut = [null];
-    checkHr(callMethod(context.manager, 5, GetSessionEnumerator, sessionEnumeratorOut), 'GetSessionEnumerator');
-    sessionEnumerator = sessionEnumeratorOut[0];
-
-    const count = [0];
-    checkHr(callMethod(sessionEnumerator, 3, GetCount, count), 'GetCount audio sessions');
-
+    enumerator = createEnumerator();
+    devices = listActiveRenderDevices(enumerator);
     const results = [];
-    for (let index = 0; index < count[0]; index += 1) {
-      let control = null;
+    for (const device of devices) {
       try {
-        const controlOut = [null];
-        checkHr(callMethod(sessionEnumerator, 4, GetSession, index, controlOut), 'GetSession');
-        control = controlOut[0];
-        results.push(callback(control, index));
-      } finally {
-        release(control);
+        forEachDeviceSession(device, callback, results);
+      } catch {
+        // Device vanished or refused activation; keep the other devices.
       }
     }
 
-    return results;
+    return {
+      deviceCount: devices.length,
+      defaultDevice: devices.find((device) => device.isDefault) || null,
+      results
+    };
   } finally {
-    release(sessionEnumerator);
-    if (context) {
-      release(context.manager);
-      release(context.device);
-      release(context.enumerator);
-    }
+    devices.forEach((device) => release(device.pointer));
+    release(enumerator);
     if (didInitialize) {
       CoUninitialize();
     }
   }
 }
 
+function sortAudioSessions(sessions) {
+  return sessions.sort((left, right) => {
+    if (left.systemSounds !== right.systemSounds) {
+      return left.systemSounds ? -1 : 1;
+    }
+
+    if (left.defaultDevice !== right.defaultDevice) {
+      return left.defaultDevice ? -1 : 1;
+    }
+
+    if (left.active !== right.active) {
+      return left.active ? -1 : 1;
+    }
+
+    return left.name.localeCompare(right.name, 'tr');
+  });
+}
+
 function getAudioSessions() {
-  const sessions = withAudioSessions((control, index) => readAudioSession(control, index))
-    .filter((session) => session.name && session.state !== 2)
-    .sort((left, right) => {
-      if (left.systemSounds !== right.systemSounds) {
-        return left.systemSounds ? -1 : 1;
-      }
+  const scan = withAudioSessions((control, index, device) => ({
+    ...readAudioSession(control, index),
+    deviceId: device.id,
+    deviceName: device.name,
+    defaultDevice: device.isDefault
+  }));
 
-      if (left.active !== right.active) {
-        return left.active ? -1 : 1;
-      }
+  if (!scan.deviceCount) {
+    return {
+      available: false,
+      reason: 'no-device',
+      message: 'Ses çıkış cihazı bulunamadı. Kulaklık veya hoparlör bağlandığında liste kendiliğinden yenilenir.',
+      sessions: []
+    };
+  }
 
-      return left.name.localeCompare(right.name, 'tr');
-    });
+  const seen = new Set();
+  const sessions = scan.results.filter((session) => {
+    if (!session.name || session.state === 2 || seen.has(session.id)) {
+      return false;
+    }
+    // Her cihazın kendi "Sistem sesleri" oturumu vardır; yalnızca varsayılan cihazınki gösterilir.
+    if (session.systemSounds && !session.defaultDevice) {
+      return false;
+    }
+    seen.add(session.id);
+    return true;
+  });
 
   return {
     available: true,
-    sessions
+    deviceCount: scan.deviceCount,
+    defaultDeviceName: scan.defaultDevice?.name || '',
+    sessions: sortAudioSessions(sessions)
   };
 }
 

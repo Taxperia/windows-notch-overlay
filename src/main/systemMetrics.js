@@ -1,6 +1,8 @@
 const { execFile } = require('node:child_process');
 const os = require('node:os');
 const { getActiveWindowInfo } = require('./win32');
+const { isGameProcess } = require('./gameMode');
+const { getGameFps } = require('./gameFps');
 
 const SYSTEM_ROOT = process.env.SystemRoot || 'C:\\Windows';
 const PROGRAM_FILES = process.env.ProgramFiles || 'C:\\Program Files';
@@ -8,26 +10,6 @@ const NVIDIA_SMI_PATHS = [
   `${SYSTEM_ROOT}\\System32\\nvidia-smi.exe`,
   `${PROGRAM_FILES}\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe`
 ];
-
-const KNOWN_GAME_PROCESSES = new Set([
-  'cs2',
-  'csgo',
-  'valorant',
-  'valorant-win64-shipping',
-  'fortniteclient-win64-shipping',
-  'leagueclient',
-  'league of legends',
-  'r5apex',
-  'gta5',
-  'eldenring',
-  'cyberpunk2077',
-  'witcher3',
-  'dota2',
-  'overwatch',
-  'destiny2',
-  'minecraft',
-  'robloxplayerbeta'
-]);
 
 let previousCpuTimes = readCpuTimes();
 
@@ -162,25 +144,17 @@ async function getGpuStats() {
   };
 }
 
-async function getGameFps() {
-  return null;
-}
-
-function isGameProcess(processName) {
-  return KNOWN_GAME_PROCESSES.has(String(processName || '').toLowerCase());
-}
-
-async function getSystemSnapshot() {
-  const [activeWindow, gpuStats, fps] = await Promise.all([
+async function getSystemSnapshot(gaming = {}) {
+  const [activeWindow, gpuStats] = await Promise.all([
     getActiveWindow(),
-    getGpuStats(),
-    getGameFps()
+    getGpuStats()
   ]);
 
   const cpuUsage = getCpuUsage();
   const mem = getMemoryStats();
   const activeProcess = activeWindow.processName || '';
-  const gameDetected = isGameProcess(activeProcess);
+  const gameDetected = isGameProcess(activeProcess, gaming.customProcesses);
+  const fps = gameDetected && gaming.showFps !== false ? getGameFps(activeWindow.pid) : null;
 
   return {
     updatedAt: new Date().toISOString(),

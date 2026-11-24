@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'none';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Medya oynatıcı</title>
+    <link rel="stylesheet" href="./media-player.css" />
+    <link rel="stylesheet" href="./media-window.css" />
+  </head>
+  <body>
+    <main id="mediaWindowRoot" class="media-window" aria-label="Medya oynatıcı"></main>
+    <div class="mw-resize" data-edge="n" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="s" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="e" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="w" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="ne" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="nw" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="se" aria-hidden="true"></div>
+    <div class="mw-resize" data-edge="sw" aria-hidden="true"></div>
+    <script src="./themes.js"></script>
+    <script src="./mediaPlayer.js"></script>
+    <script src="./media-window.js"></script>
+  </body>
+</html>

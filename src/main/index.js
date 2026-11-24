@@ -17,10 +17,14 @@ const {
 } = require('electron');
 
 const { getSystemSnapshot } = require('./systemMetrics');
+const { getActiveWindowInfo, getProcessPath, isPrimaryMouseButtonDown } = require('./win32');
+const { addSessionIcons, createExecutableIconReader } = require('./appIcons');
+const { nextGameState } = require('./gameMode');
 const { getCurrentMedia, sendMediaCommand } = require('./media');
 const { getNotificationSnapshot } = require('./notifications');
 const { getLanguage, listLanguages } = require('./i18n');
-const { loadSettings, updateSettings } = require('./appSettings');
+const { MEDIA_WINDOW_LIMITS, loadSettings, updateSettings } = require('./appSettings');
+const { resizeBounds, resolveMediaWindowBounds } = require('./mediaWindowBounds');
 const {
   connectIntegration,
   disconnectIntegration,
@@ -45,6 +49,13 @@ const {
   setAudioSessionMuted,
   setAudioSessionVolume
 } = require('./coreAudio');
+const { getExternalBrightnessState } = require('./monitorBrightness');
+const {
+  NO_MEMORY: NO_BRIGHTNESS_MEMORY,
+  hasMemory: hasBrightnessMemory,
+  memoryAfterWrite: brightnessMemoryAfterWrite,
+  reconcileRead: reconcileBrightnessRead
+} = require('./brightnessMemory');
 const { cleanRam, memorySnapshot } = require('./ramCleaner');
 const { createLiveActivityMonitor } = require('./liveActivity');
 const packageJson = require('../../package.json');
@@ -54,6 +65,11 @@ const COLLAPSED_BOUNDS = { width: 250, height: 34 };
 const BRIGHTNESS_CACHE_MS = 20000;
 const EXPANDED_BOUNDS = { width: 500, height: 330 };
 const MEDIA_BOUNDS = { width: 500, height: 176 };
+const MEDIA_MODERN_BOUNDS = { width: 500, height: 190 };
+const MEDIA_POLL_MS = 6000;
+const MEDIA_WINDOW_POLL_MS = 2500;
+const MEDIA_RESIZE_STEP_MS = 16;
+const MEDIA_RESIZE_EDGES = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']);
 const ALARM_BOUNDS = { width: 500, height: 172 };
 const SETTINGS_BOUNDS = { width: 760, height: 520 };
 const THEME_TOP_MARGIN = {
@@ -91,7 +107,18 @@ const REQUEST_INTERVALS = Object.freeze({
 
 let mainWindow;
 let settingsWindow;
+let mediaPlayerWindow = null;
+let mediaResizeState = null;
+let mediaResizeTimer = null;
+let mediaBoundsSaveTimer = null;
+let currentMediaPlayerStyle = 'modern';
+let mediaWindowPinned = true;
+let appQuitting = false;
 let metricsTimer;
+let gameTimer;
+let metricsInFlight = false;
+let gamingSettings = {};
+let gameState = { active: false, processName: '' };
 let mediaTimer;
 let controlsTimer;
 let notificationsTimer;
@@ -611,6 +638,61 @@ async function readHardwareBrightness() {
   return brightnessHardwareReadPromise;
 }
 
+function isDdcBrightnessSource(source) {
+  return String(source || '').startsWith('DDC');
+}
+
+async function saveBrightnessMemory(memory) {
+  await updateSettings({
+    system: {
+      hardwareBrightnessMemory: memory
+    }
+  }).catch(() => {});
+}
+
+// DDC/CI monitörlerin bir kısmı yazılan değeri okumada geri bildirmez (hep aynı eski değeri döndürür).
+// Bu durumda son ayarlanan değer kalıcı saklanır ve monitör aynı eski değeri bildirdikçe o gösterilir.
+async function applyBrightnessMemory(state) {
+  if (!isDdcBrightnessSource(state?.source) || state.level == null) {
+    return state;
+  }
+
+  const settings = await loadSettings();
+  const memory = settings?.system?.hardwareBrightnessMemory;
+  if (!hasBrightnessMemory(memory)) {
+    return state;
+  }
+
+  const result = reconcileBrightnessRead(state.level, memory);
+  if (!result.remembered) {
+    await saveBrightnessMemory({ ...NO_BRIGHTNESS_MEMORY });
+    return state;
+  }
+
+  return {
+    ...state,
+    level: result.level,
+    reportedLevel: state.level,
+    remembered: true,
+    message: `Monitör parlaklığı ${result.level}% (son ayarlanan değer; monitör güncel değeri bildirmiyor)`
+  };
+}
+
+async function rememberDdcBrightnessWrite(requestedLevel, previousLevel) {
+  let readBack = null;
+  for (const delay of [250, 600]) {
+    await wait(delay);
+    readBack = await queueHardwareBrightness(() => {
+      const state = getExternalBrightnessState();
+      return state?.available ? state.level : null;
+    }).catch(() => null);
+    if (readBack != null) {
+      break;
+    }
+  }
+  await saveBrightnessMemory(brightnessMemoryAfterWrite(requestedLevel, readBack, previousLevel));
+}
+
 async function getEffectiveBrightnessState(options = {}) {
   const force = options.force === true;
   if (!force && brightnessCache.value && (Date.now() - brightnessCache.at) < BRIGHTNESS_CACHE_MS) {
@@ -620,10 +702,10 @@ async function getEffectiveBrightnessState(options = {}) {
   const hardware = await readHardwareBrightness();
   if (hardware?.available && hardware?.writable !== false) {
     deactivateSoftwareDimmer();
-    const next = {
+    const next = await applyBrightnessMemory({
       ...hardware,
       mode: 'hardware'
-    };
+    });
     brightnessCache = { at: Date.now(), value: next };
     return next;
   }
@@ -668,14 +750,23 @@ async function setEffectiveBrightnessLevel(level) {
 
   const hardwareOperation = queueHardwareBrightness(async () => {
     const hardware = await getBrightnessState();
-    const result = hardware?.available && hardware?.writable !== false
-      ? await setBrightnessLevel(nextLevel)
-      : null;
+    if (!(hardware?.available && hardware?.writable !== false)) {
+      return { hardware, result: null };
+    }
+    // DDC/CI hattı anlık meşgul olabilir; yazılımsal karartmaya düşmeden önce kısa aralıkla yeniden dene.
+    let result = await setBrightnessLevel(nextLevel);
+    for (let attempt = 0; !result?.ok && attempt < 2; attempt += 1) {
+      await wait(200);
+      result = await setBrightnessLevel(nextLevel);
+    }
     return { hardware, result };
   });
   const { hardware, result } = await hardwareOperation;
   if (result?.ok) {
     deactivateSoftwareDimmer();
+    if (isDdcBrightnessSource(result.source)) {
+      await rememberDdcBrightnessWrite(nextLevel, hardware?.level);
+    }
     const next = {
       ...result,
       mode: 'hardware'
@@ -783,6 +874,44 @@ function restoreMicrophoneMuteIfNeeded() {
   }
 
   setMicrophoneGuard(false);
+}
+
+function readAudioMixerSafely() {
+  try {
+    return getAudioSessions();
+  } catch (error) {
+    return {
+      available: false,
+      reason: 'error',
+      message: `Ses oturumları okunamadı (${error.message || 'bilinmeyen hata'}). Birkaç saniye içinde tekrar denenecek.`,
+      sessions: []
+    };
+  }
+}
+
+let executableIconReader = null;
+
+function iconForExecutable(source) {
+  if (!executableIconReader) {
+    executableIconReader = createExecutableIconReader((target, options) => app.getFileIcon(target, options));
+  }
+  return executableIconReader(source);
+}
+
+// Her ses oturumuna, sürecin exe dosyasının Windows'taki ikonunu ekler (bulunamazsa harf avatarı kalır).
+function readAudioMixerWithIcons() {
+  return addSessionIcons(readAudioMixerSafely(), { getProcessPath, iconForExecutable });
+}
+
+function runAudioMixerAction(action) {
+  try {
+    return action();
+  } catch (error) {
+    return {
+      ok: false,
+      message: error.message || 'Ses oturumu değiştirilemedi.'
+    };
+  }
 }
 
 function rendererPath() {
@@ -914,9 +1043,209 @@ async function createSettingsWindow() {
   return settingsWindow;
 }
 
+function mediaWindowPath() {
+  return path.join(__dirname, '..', 'renderer', 'media-window.html');
+}
+
+function isMediaWindowOpen() {
+  return Boolean(mediaPlayerWindow && !mediaPlayerWindow.isDestroyed());
+}
+
+function mediaWindowState() {
+  return {
+    open: isMediaWindowOpen(),
+    alwaysOnTop: isMediaWindowOpen() ? mediaWindowPinned : null
+  };
+}
+
+function publishMediaWindowState() {
+  const state = mediaWindowState();
+  sendToWindow(mainWindow, 'media-window:state', state);
+  sendToWindow(settingsWindow, 'media-window:state', state);
+}
+
+function restartMediaTimer() {
+  clearInterval(mediaTimer);
+  if (appQuitting) {
+    return;
+  }
+  mediaTimer = setInterval(publishMedia, isMediaWindowOpen() ? MEDIA_WINDOW_POLL_MS : MEDIA_POLL_MS);
+}
+
+function saveMediaWindowBounds() {
+  clearTimeout(mediaBoundsSaveTimer);
+  mediaBoundsSaveTimer = null;
+  if (!isMediaWindowOpen()) {
+    return;
+  }
+  const bounds = mediaPlayerWindow.getBounds();
+  updateSettings({
+    system: {
+      mediaWindow: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        positioned: true
+      }
+    }
+  }).catch(() => {});
+}
+
+function scheduleMediaWindowBoundsSave() {
+  clearTimeout(mediaBoundsSaveTimer);
+  mediaBoundsSaveTimer = setTimeout(saveMediaWindowBounds, 400);
+}
+
+function stopMediaWindowResize() {
+  clearInterval(mediaResizeTimer);
+  mediaResizeTimer = null;
+  if (mediaResizeState) {
+    mediaResizeState = null;
+    scheduleMediaWindowBoundsSave();
+  }
+}
+
+// Şeffaf, çerçevesiz pencerede Windows kenar boyutlandırması sunmadığından tutamaçlar burada işlenir.
+function stepMediaWindowResize() {
+  if (!mediaResizeState || !isMediaWindowOpen()) {
+    stopMediaWindowResize();
+    return;
+  }
+  // Fare bırakıldıysa (pointerup kaçırılsa bile) boyutlandırmayı bitir.
+  if (!isPrimaryMouseButtonDown() && Date.now() - mediaResizeState.startedAt > 120) {
+    stopMediaWindowResize();
+    return;
+  }
+
+  const cursor = screen.getCursorScreenPoint();
+  const next = resizeBounds(
+    mediaResizeState.bounds,
+    mediaResizeState.edge,
+    cursor.x - mediaResizeState.cursor.x,
+    cursor.y - mediaResizeState.cursor.y,
+    MEDIA_WINDOW_LIMITS
+  );
+  const current = mediaPlayerWindow.getBounds();
+  if (current.x !== next.x || current.y !== next.y || current.width !== next.width || current.height !== next.height) {
+    mediaPlayerWindow.setBounds(next, false);
+  }
+}
+
+async function createMediaPlayerWindow() {
+  if (isMediaWindowOpen()) {
+    mediaPlayerWindow.showInactive();
+    return mediaPlayerWindow;
+  }
+
+  const settings = await loadSettings();
+  const saved = settings?.system?.mediaWindow || {};
+  const bounds = resolveMediaWindowBounds(
+    saved,
+    screen.getAllDisplays().map((display) => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+    MEDIA_WINDOW_LIMITS
+  );
+  const alwaysOnTop = saved.alwaysOnTop !== false;
+  mediaWindowPinned = alwaysOnTop;
+
+  mediaPlayerWindow = new BrowserWindow({
+    ...bounds,
+    minWidth: MEDIA_WINDOW_LIMITS.minWidth,
+    minHeight: MEDIA_WINDOW_LIMITS.minHeight,
+    maxWidth: MEDIA_WINDOW_LIMITS.maxWidth,
+    maxHeight: MEDIA_WINDOW_LIMITS.maxHeight,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    resizable: true,
+    thickFrame: false,
+    maximizable: false,
+    minimizable: true,
+    fullscreenable: false,
+    hasShadow: false,
+    skipTaskbar: false,
+    alwaysOnTop,
+    show: false,
+    title: 'Medya oynatıcı',
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'media-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  const window = mediaPlayerWindow;
+  hardenRendererWindow(window);
+  window.setMenuBarVisibility(false);
+  window.loadFile(mediaWindowPath());
+  if (OPEN_DEVTOOLS) {
+    window.webContents.once('did-finish-load', () => {
+      window.webContents.openDevTools({ mode: 'detach' });
+    });
+  }
+  // Gizli pencereye verilen "en üstte" bayrağı Windows'ta gösterilirken kaybolabildiği için show() sonrası uygulanır.
+  window.once('ready-to-show', () => {
+    window.show();
+    window.setAlwaysOnTop(alwaysOnTop, 'floating');
+  });
+  window.on('moved', scheduleMediaWindowBoundsSave);
+  window.on('resized', scheduleMediaWindowBoundsSave);
+  window.on('close', () => {
+    if (mediaBoundsSaveTimer) {
+      saveMediaWindowBounds();
+    }
+  });
+  window.on('closed', () => {
+    if (mediaPlayerWindow === window) {
+      mediaPlayerWindow = null;
+    }
+    stopMediaWindowResize();
+    restartMediaTimer();
+    publishMediaWindowState();
+  });
+
+  restartMediaTimer();
+  publishMediaWindowState();
+  return window;
+}
+
+function closeMediaPlayerWindow() {
+  if (isMediaWindowOpen()) {
+    mediaPlayerWindow.close();
+  }
+}
+
+async function toggleMediaPlayerWindow() {
+  if (isMediaWindowOpen()) {
+    closeMediaPlayerWindow();
+    return { open: false };
+  }
+  await createMediaPlayerWindow();
+  return mediaWindowState();
+}
+
+async function toggleMediaWindowAlwaysOnTop() {
+  if (!isMediaWindowOpen()) {
+    return mediaWindowState();
+  }
+  const next = !mediaWindowPinned;
+  mediaWindowPinned = next;
+  mediaPlayerWindow.setAlwaysOnTop(next, 'floating');
+  await updateSettings({
+    system: {
+      mediaWindow: {
+        alwaysOnTop: next
+      }
+    }
+  }).catch(() => {});
+  return mediaWindowState();
+}
+
 async function openSettingsByPreference() {
   const settings = await loadSettings();
-  if (settings?.system?.settingsOpenMode === 'window') {
+  if (gameState.active || settings?.system?.settingsOpenMode === 'window') {
     await createSettingsWindow();
     return;
   }
@@ -974,7 +1303,8 @@ function boundsForOverlayMode(mode) {
   }
 
   if (mode === 'media') {
-    return { width, height: withPanelChrome(MEDIA_BOUNDS).height };
+    const mediaBounds = currentMediaPlayerStyle === 'modern' ? MEDIA_MODERN_BOUNDS : MEDIA_BOUNDS;
+    return { width, height: withPanelChrome(mediaBounds).height };
   }
 
   if (mode === 'alarm') {
@@ -997,6 +1327,7 @@ function isPointInRect(point, rect, slop = 0) {
 }
 
 function setPointerOnStrip(inside) {
+  if (gameState.active) inside = false;
   if (pointerOnStrip === inside) {
     return;
   }
@@ -1011,6 +1342,7 @@ function pollOverlayPointer() {
   if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible()) {
     return;
   }
+  if (gameState.active) return;
   const point = screen.getCursorScreenPoint();
   const bounds = mainWindow.getBounds();
 
@@ -1051,11 +1383,30 @@ function syncOverlayMousePassthrough() {
   // alttaki pencerelere geçirir, imleç şeride gelince etkileşim açılır.
   pointerOnStrip = false;
   pointerWasInside = true;
-  mainWindow.setIgnoreMouseEvents(overlayMode === 'collapsed');
+  mainWindow.setIgnoreMouseEvents(gameState.active || overlayMode === 'collapsed');
   syncPointerWatch();
 }
 
+function refreshGameState() {
+  let foreground;
+  try {
+    foreground = getActiveWindowInfo();
+  } catch {
+    return;
+  }
+  const next = nextGameState(gameState, foreground, gamingSettings, process.pid);
+  if (next.active === gameState.active && next.processName === gameState.processName) return;
+  gameState = next;
+  if (next.active) setOverlayMode('collapsed');
+  syncOverlayMousePassthrough();
+  sendToWindow(mainWindow, 'gaming:update', gameState);
+}
+
 function setOverlayMode(nextMode) {
+  if (gameState.active && nextMode !== 'collapsed') {
+    sendToWindow(mainWindow, 'overlay:mode', 'collapsed');
+    return;
+  }
   if (!mainWindow || overlayMode === nextMode) {
     return;
   }
@@ -1083,6 +1434,7 @@ function applyRuntimeSettings(settings) {
     }).catch(() => {});
   }
   currentNotchStyle = nextStyle;
+  currentMediaPlayerStyle = settings?.appearance?.mediaPlayerStyle === 'theme' ? 'theme' : 'modern';
   collapsedBounds = collapsedBoundsForSettings(settings);
 
   app.setLoginItemSettings({
@@ -1092,6 +1444,8 @@ function applyRuntimeSettings(settings) {
   configureAutoUpdates(settings);
   registerVideoShortcuts(settings);
   liveActivity.configure(settings?.liveActivities);
+  gamingSettings = settings?.gaming || {};
+  refreshGameState();
 
   if (nextTheme !== overlayTheme) {
     overlayTheme = nextTheme;
@@ -1123,30 +1477,48 @@ function sendToWindow(targetWindow, channel, payload) {
 }
 
 function sendToRendererWindows(channel, payload) {
-  [mainWindow, settingsWindow].forEach((window) => {
+  [mainWindow, settingsWindow, mediaPlayerWindow].forEach((window) => {
     sendToWindow(window, channel, payload);
   });
 }
 
-async function publishMetrics() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-
-  const snapshot = await getSystemSnapshot();
-  sendToWindow(mainWindow, 'metrics:update', snapshot);
+function broadcastMedia(media) {
+  sendToWindow(mainWindow, 'media:update', media);
+  sendToWindow(mediaPlayerWindow, 'media:update', media);
 }
 
-async function publishMedia() {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+async function publishMetrics() {
+  if (!mainWindow || mainWindow.isDestroyed() || metricsInFlight) {
     return;
   }
 
-  const settings = await loadSettings();
-  const media = await getCurrentMedia({
-    preferredSource: settings?.appearance?.mediaSource || 'spotify'
-  });
-  sendToWindow(mainWindow, 'media:update', media);
+  metricsInFlight = true;
+  try {
+    const snapshot = await getSystemSnapshot(gamingSettings);
+    sendToWindow(mainWindow, 'metrics:update', snapshot);
+  } finally {
+    metricsInFlight = false;
+  }
+}
+
+let mediaPublishInFlight = false;
+
+async function publishMedia() {
+  const hasMainWindow = mainWindow && !mainWindow.isDestroyed();
+  if ((!hasMainWindow && !isMediaWindowOpen()) || mediaPublishInFlight) {
+    return;
+  }
+
+  mediaPublishInFlight = true;
+  try {
+    const settings = await loadSettings();
+    const media = await getCurrentMedia({
+      preferredSource: settings?.appearance?.mediaSource || 'spotify'
+    });
+    broadcastMedia(media);
+  } finally {
+    mediaPublishInFlight = false;
+  }
 }
 
 async function publishControls() {
@@ -1533,10 +1905,21 @@ function registerVideoShortcuts(settings) {
   });
 }
 
+// options.mainOnly: yalnızca çentik penceresi. options.mediaWindow: ayrı medya penceresine de izin ver
+// (o pencere yalnızca medya, tema ayarı ve kendi pencere kanallarını kullanabilir).
+// options.mediaWindowOnly: yalnızca ayrı medya penceresi.
 function isTrustedRendererSender(event, options = {}) {
   const owner = BrowserWindow.fromWebContents(event.sender);
-  const allowedWindows = options.mainOnly ? [mainWindow] : [mainWindow, settingsWindow];
-  if (!owner || owner.isDestroyed() || !allowedWindows.includes(owner)) {
+  if (!owner || owner.isDestroyed()) {
+    return false;
+  }
+
+  let expectedPath = '';
+  if (!options.mediaWindowOnly && (owner === mainWindow || (!options.mainOnly && owner === settingsWindow))) {
+    expectedPath = rendererPath();
+  } else if ((options.mediaWindow || options.mediaWindowOnly) && owner === mediaPlayerWindow) {
+    expectedPath = mediaWindowPath();
+  } else {
     return false;
   }
 
@@ -1546,10 +1929,14 @@ function isTrustedRendererSender(event, options = {}) {
   }
 
   try {
-    return path.resolve(fileURLToPath(frame.url)) === path.resolve(rendererPath());
+    return path.resolve(fileURLToPath(frame.url)) === path.resolve(expectedPath);
   } catch {
     return false;
   }
+}
+
+function isMediaWindowSender(event) {
+  return isTrustedRendererSender(event, { mediaWindowOnly: true });
 }
 
 function registerTrustedHandle(channel, listener, options = {}) {
@@ -1591,7 +1978,8 @@ function registerIpc() {
       return;
     }
 
-    if (overlayMode === 'collapsed') {
+    refreshGameState();
+    if (overlayMode === 'collapsed' && !gameState.active) {
       setOverlayMode('controls');
     }
   });
@@ -1641,17 +2029,48 @@ function registerIpc() {
     }
   });
   ipcMain.on('window:close-current', closeWindowFromSender);
+  ipcMain.on('media-window:close', (event) => {
+    if (isMediaWindowSender(event)) {
+      closeMediaPlayerWindow();
+    }
+  });
+  ipcMain.on('media-window:resize-start', (event, edge) => {
+    if (!isMediaWindowSender(event) || !MEDIA_RESIZE_EDGES.has(edge) || !isMediaWindowOpen()) {
+      return;
+    }
+    mediaResizeState = {
+      edge,
+      cursor: screen.getCursorScreenPoint(),
+      bounds: mediaPlayerWindow.getBounds(),
+      startedAt: Date.now()
+    };
+    clearInterval(mediaResizeTimer);
+    mediaResizeTimer = setInterval(stepMediaWindowResize, MEDIA_RESIZE_STEP_MS);
+  });
+  ipcMain.on('media-window:resize-end', (event) => {
+    if (isMediaWindowSender(event)) {
+      stepMediaWindowResize();
+      stopMediaWindowResize();
+    }
+  });
 
-  registerTrustedHandle('metrics:get', () => getSystemSnapshot());
+  registerTrustedHandle('media-window:toggle', () => toggleMediaPlayerWindow());
+  registerTrustedHandle('media-window:get-state', () => mediaWindowState());
+  registerTrustedHandle('media-window:toggle-pin', () => toggleMediaWindowAlwaysOnTop(), { mediaWindowOnly: true });
+  registerTrustedHandle('metrics:get', () => getSystemSnapshot(gamingSettings));
+  registerTrustedHandle('gaming:get', () => {
+    refreshGameState();
+    return gameState;
+  });
   registerTrustedHandle('media:get', async () => {
     const settings = await loadSettings();
     return getCurrentMedia({
       preferredSource: settings?.appearance?.mediaSource || 'spotify'
     });
-  });
+  }, { mediaWindow: true });
   registerTrustedHandle('controls:get', () => getPublishedControlState());
   registerTrustedHandle('privacy:get', () => liveActivity.getPrivacyState());
-  registerTrustedHandle('settings:get', () => loadSettings());
+  registerTrustedHandle('settings:get', () => loadSettings(), { mediaWindow: true });
   registerTrustedHandle('notifications:get', () => ({
     available: true,
     notifications: filterDismissedNotifications(notificationHistory)
@@ -1727,19 +2146,19 @@ function registerIpc() {
     await publishControls();
     return result;
   });
-  registerTrustedHandle('audio-mixer:get', () => getAudioSessions());
+  registerTrustedHandle('audio-mixer:get', () => readAudioMixerWithIcons());
   registerTrustedHandle('audio-mixer:set-volume', async (_event, sessionId, volume) => {
-    const result = setAudioSessionVolume(sessionId, volume);
+    const result = runAudioMixerAction(() => setAudioSessionVolume(sessionId, volume));
     return {
       ...result,
-      mixer: getAudioSessions()
+      mixer: await readAudioMixerWithIcons()
     };
   });
   registerTrustedHandle('audio-mixer:set-muted', async (_event, sessionId, muted) => {
-    const result = setAudioSessionMuted(sessionId, muted);
+    const result = runAudioMixerAction(() => setAudioSessionMuted(sessionId, muted));
     return {
       ...result,
-      mixer: getAudioSessions()
+      mixer: await readAudioMixerWithIcons()
     };
   });
 
@@ -1788,18 +2207,19 @@ function registerIpc() {
     return getNetworkExtras(options);
   });
 
-  registerTrustedHandle('media:command', async (_event, command) => {
+  registerTrustedHandle('media:command', async (_event, command, extra) => {
     const settings = await loadSettings();
     const media = await sendMediaCommand(command, {
-      preferredSource: settings?.appearance?.mediaSource || 'spotify'
+      preferredSource: settings?.appearance?.mediaSource || 'spotify',
+      positionMs: extra?.positionMs
     });
-    if (media && mainWindow && !mainWindow.isDestroyed()) {
-      sendToWindow(mainWindow, 'media:update', media);
+    if (media) {
+      broadcastMedia(media);
     } else {
       await publishMedia();
     }
-    return { ok: true };
-  });
+    return media || { ok: true };
+  }, { mediaWindow: true });
 
   registerTrustedHandle('quick:action', async (event, action) => {
     switch (action) {
@@ -1944,7 +2364,8 @@ app.whenReady().then(async () => {
     publishIntegrationNotifications();
   }
   metricsTimer = setInterval(publishMetrics, 2500);
-  mediaTimer = setInterval(publishMedia, 6000);
+  gameTimer = setInterval(refreshGameState, 500);
+  restartMediaTimer();
   controlsTimer = setInterval(publishControls, 10000);
   notificationsTimer = setInterval(publishNotifications, 5000);
   if (ENABLE_EXTERNAL_INTEGRATIONS) {
@@ -1956,6 +2377,8 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  appQuitting = true;
+  clearInterval(gameTimer);
   restoreMicrophoneMuteIfNeeded();
   deactivateSoftwareDimmer();
   liveActivity.stop();
@@ -1970,6 +2393,12 @@ app.on('before-quit', () => {
   if (mediaTimer) {
     clearInterval(mediaTimer);
   }
+
+  if (mediaBoundsSaveTimer) {
+    saveMediaWindowBounds();
+  }
+  clearInterval(mediaResizeTimer);
+  mediaResizeTimer = null;
 
   if (controlsTimer) {
     clearInterval(controlsTimer);

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Windows Notch Overlay</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./media-player.css" />
   </head>
   <body>
     <main id="notch" class="notch theme-attached" aria-label="Windows notch overlay">
@@ -15,19 +16,20 @@
           <div id="dateCompact" class="date-compact">--.--.----</div>
         </div>
         <div id="contentExtras" class="content-extras" hidden></div>
+        <div id="gameCompact" class="game-compact" aria-label="Oyun performansı" hidden></div>
         <div id="alarmCompact" class="alarm-compact" hidden>
           <div id="alarmCompactName" class="alarm-compact-name">Alarm</div>
           <div id="alarmCompactTime" class="alarm-compact-time">--:--</div>
         </div>
         <div id="activityCompact" class="activity-compact" role="status" aria-live="polite" hidden>
           <span id="activityIcon" class="activity-icon" aria-hidden="true"></span>
-          <span id="activityLabel" class="activity-label"></span>
+          <span id="activityLabel" class="activity-label"><span id="activityLabelText"></span></span>
           <span id="activityMeter" class="activity-meter" aria-hidden="true"><span id="activityMeterFill" class="activity-meter-fill"></span></span>
           <span id="activityValue" class="activity-value"></span>
         </div>
         <div id="privacyDots" class="privacy-dots" hidden>
-          <span id="privacyCameraDot" class="privacy-dot is-camera" hidden></span>
-          <span id="privacyMicrophoneDot" class="privacy-dot is-microphone" hidden></span>
+          <span id="privacyCameraDot" class="privacy-dot is-camera" role="img" aria-label="Kamera kullanımda" hidden></span>
+          <span id="privacyMicrophoneDot" class="privacy-dot is-microphone" role="img" aria-label="Mikrofon kullanımda" hidden></span>
         </div>
       </section>
 
@@ -41,12 +43,21 @@
             <div id="notificationTicker" class="notification-ticker" aria-live="polite" hidden>
               <span id="notificationTickerText"></span>
             </div>
-            <button class="settings-button" data-open-settings title="Ayarlar" aria-label="Ayarlar">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7.1 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
-              </svg>
-            </button>
+            <div class="topbar-actions">
+              <!-- Yalnızca tema uyumlu medya görünümünde görünür; modern kartın kendi butonu vardır. -->
+              <button class="settings-button topbar-media-window" type="button" data-toggle-media-window title="Ayrı pencerede aç" aria-label="Medyayı ayrı pencerede aç" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="15" rx="2.5" />
+                  <rect x="11.5" y="11" width="7" height="5.5" rx="1.2" />
+                </svg>
+              </button>
+              <button class="settings-button" data-open-settings title="Ayarlar" aria-label="Ayarlar">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7.1 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
+                </svg>
+              </button>
+            </div>
           </header>
 
           <section class="status-strip" data-setting-visibility="showStatus" aria-label="Durum">
@@ -72,68 +83,8 @@
             <button class="alarm-dismiss" data-dismiss-alarm>Alarmı kapat</button>
           </section>
 
-          <section id="mediaStage" class="media-stage" aria-label="Medya görünümü" hidden>
-            <button class="media-back" data-media-back title="Menülere dön" aria-label="Menülere dön">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            </button>
-            <div id="mediaAvatar" class="media-avatar">
-              <img id="mediaCover" class="media-cover" alt="" hidden />
-              <span id="mediaAvatarText" class="media-avatar-text">S</span>
-            </div>
-            <div class="media-detail">
-              <div id="mediaStageApp" class="media-app">Spotify</div>
-              <div id="mediaStageTitle" class="media-stage-title">Medya bekleniyor</div>
-              <div id="mediaStageArtist" class="media-stage-artist"></div>
-              <div class="media-timeline">
-                <span id="mediaElapsed">0:00</span>
-                <div class="media-track">
-                  <span id="mediaProgress"></span>
-                </div>
-                <span id="mediaDuration">0:00</span>
-              </div>
-              <div class="media-stage-controls">
-                <button class="media-control-button" data-media="previous" title="Önceki" aria-label="Önceki">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m19 20-10-8 10-8v16Z" />
-                    <path d="M5 19V5" />
-                  </svg>
-                </button>
-                <button class="media-control-button primary" data-media="playPause" data-state="play" title="Oynat" aria-label="Oynat">
-                  <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M8 5v14l11-7-11-7Z" />
-                  </svg>
-                  <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M10 4H6v16h4V4Z" />
-                    <path d="M18 4h-4v16h4V4Z" />
-                  </svg>
-                </button>
-                <button class="media-control-button" data-media="next" title="Sonraki" aria-label="Sonraki">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m5 4 10 8-10 8V4Z" />
-                    <path d="M19 5v14" />
-                  </svg>
-                </button>
-                <!-- Screen video is temporarily disabled.
-                <button class="media-control-button screen-video-control" type="button" data-open-screen-video title="Ekran içi video" aria-label="Ekran içi video">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <rect x="3" y="5" width="18" height="14" rx="2" />
-                    <rect x="12" y="12" width="6" height="4" rx="1" />
-                  </svg>
-                </button>
-                -->
-              </div>
-            </div>
-            <div id="mediaWaves" class="media-waves" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-          </section>
+          <!-- İçerik mediaPlayer.js tarafından oluşturulur; aynı bileşen ayrı medya penceresinde de kullanılır. -->
+          <section id="mediaStage" class="media-stage" aria-label="Medya görünümü" hidden></section>
 
           <!-- Screen video is temporarily disabled.
           <section id="videoStage" class="video-stage" aria-label="Ekran içi video" hidden>
@@ -192,6 +143,12 @@
               -->
               <span id="mediaTitle">Medya kontrolleri hazır</span>
               <span id="mediaArtist"></span>
+              <button class="media-control-button media-window-toggle" type="button" data-toggle-media-window title="Ayrı pencerede aç" aria-label="Medyayı ayrı pencerede aç" aria-pressed="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="15" rx="2.5" />
+                  <rect x="11.5" y="11" width="7" height="5.5" rx="1.2" />
+                </svg>
+              </button>
             </div>
           </footer>
         </section>
@@ -612,6 +569,23 @@
                       <button type="button" class="accent-swatch" data-accent-preset="#64748b" style="--swatch:#64748b" aria-label="Gri"></button>
                     </div>
                   </div>
+                  <div class="settings-row settings-row-stack">
+                    <div>
+                      <strong>Medya oynatıcı tasarımı</strong>
+                      <span>Çentikteki medya görünümü ve ayrı medya penceresi bu tasarımı kullanır.</span>
+                    </div>
+                    <div class="segmented-control" aria-label="Medya oynatıcı tasarımı">
+                      <button type="button" data-setting-value="appearance.mediaPlayerStyle" data-value="theme">Tema uyumlu</button>
+                      <button type="button" data-setting-value="appearance.mediaPlayerStyle" data-value="modern">Modern kart</button>
+                    </div>
+                  </div>
+                  <div class="settings-row">
+                    <div>
+                      <strong>Ayrı medya penceresi</strong>
+                      <span>Oynatıcıyı istediğin yere sürükleyip kenarlarından boyutlandırabileceğin ayrı bir pencerede aç.</span>
+                    </div>
+                    <button class="inline-action" type="button" data-toggle-media-window aria-pressed="false">Pencereyi aç</button>
+                  </div>
                 </div>
               </section>
 
@@ -863,9 +837,37 @@
                   <div class="settings-row">
                     <div>
                       <strong>Kamera ve mikrofon uyarısı</strong>
-                      <span>Bir uygulama kamerayı veya mikrofonu kullanırken çentikte nokta yak.</span>
+                      <span>Kullanım boyunca simge göster; başladığında uygulama adını bir kez kaydır.</span>
                     </div>
                     <button class="switch" data-setting-toggle="liveActivities.privacy" aria-label="Kamera ve mikrofon uyarısı"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>Otomatik oyun modu</strong><span>Oyun öndeyken performansı göster. Menü açılmaz, tıklamalar oyuna geçer. Alt+Tab ile normal görünüme dön.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.enabled" aria-label="Otomatik oyun modu"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>FPS</strong><span>RTSS çalışırken ve oyunu izlerken gerçek kare hızı gösterilir; veri yoksa — görünür.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.showFps" aria-label="Oyunda FPS göster"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>CPU kullanımı</strong><span>Oyun sırasında toplam işlemci kullanımını göster.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.showCpu" aria-label="Oyunda CPU göster"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>GPU kullanımı</strong><span>Desteklenen NVIDIA ekran kartının kullanımını göster.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.showGpu" aria-label="Oyunda GPU göster"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>GPU sıcaklığı</strong><span>Desteklenen ekran kartının sıcaklığını göster.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.showGpuTemp" aria-label="Oyunda GPU sıcaklığı göster"></button>
+                  </div>
+                  <div class="settings-row">
+                    <div><strong>RAM kullanımı</strong><span>Oyun sırasında toplam bellek kullanımını göster.</span></div>
+                    <button class="switch" data-setting-toggle="gaming.showRam" aria-label="Oyunda RAM göster"></button>
+                  </div>
+                  <div class="settings-row settings-row-stack">
+                    <div><strong>Ek oyunlar</strong><span>Otomatik tanınmayan oyunların exe adlarını virgülle ayır: oyun.exe, baska-oyun.exe</span></div>
+                    <input class="settings-input" data-setting-input="gaming.customProcesses" maxlength="2048" aria-label="Ek oyunların exe adları" placeholder="oyun.exe, baska-oyun.exe" />
                   </div>
                   <!-- Screen video is temporarily disabled.
                   <div class="settings-row settings-row-stack">
@@ -1088,6 +1090,8 @@
     </main>
 
     <script src="./faIcons.js"></script>
+    <script src="./themes.js"></script>
+    <script src="./mediaPlayer.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

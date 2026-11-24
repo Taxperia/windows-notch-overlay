@@ -7,6 +7,8 @@ const elements = {
   activityCompact: document.getElementById('activityCompact'),
   activityIcon: document.getElementById('activityIcon'),
   activityLabel: document.getElementById('activityLabel'),
+  activityLabelText: document.getElementById('activityLabelText'),
+  gameCompact: document.getElementById('gameCompact'),
   activityMeter: document.getElementById('activityMeter'),
   activityMeterFill: document.getElementById('activityMeterFill'),
   activityValue: document.getElementById('activityValue'),
@@ -25,19 +27,9 @@ const elements = {
   mediaTitle: document.getElementById('mediaTitle'),
   mediaArtist: document.getElementById('mediaArtist'),
   mediaStage: document.getElementById('mediaStage'),
-  mediaStageApp: document.getElementById('mediaStageApp'),
-  mediaStageTitle: document.getElementById('mediaStageTitle'),
-  mediaStageArtist: document.getElementById('mediaStageArtist'),
   videoStage: document.getElementById('videoStage'),
   videoStageStatus: document.getElementById('videoStageStatus'),
   screenVideoView: document.getElementById('screenVideoView'),
-  mediaAvatar: document.getElementById('mediaAvatar'),
-  mediaAvatarText: document.getElementById('mediaAvatarText'),
-  mediaCover: document.getElementById('mediaCover'),
-  mediaElapsed: document.getElementById('mediaElapsed'),
-  mediaDuration: document.getElementById('mediaDuration'),
-  mediaProgress: document.getElementById('mediaProgress'),
-  mediaWaves: document.getElementById('mediaWaves'),
   cpuValue: document.getElementById('cpuValue'),
   gpuValue: document.getElementById('gpuValue'),
   ramValue: document.getElementById('ramValue'),
@@ -117,6 +109,8 @@ const api = window.notch || {
   media: async () => {},
   quickAction: async () => {},
   getMetrics: async () => null,
+  getGameState: async () => null,
+  onGameState: () => {},
   getMedia: async () => null,
   getControls: async () => null,
   getSettings: async () => null,
@@ -162,8 +156,22 @@ const api = window.notch || {
   hideScreenVideo: async () => null,
   toggleScreenVideo: async () => null,
   getNetworkExtras: async () => null,
+  toggleMediaWindow: async () => null,
+  getMediaWindowState: async () => null,
+  onMediaWindowState: () => {},
   webSearch: async () => {}
 };
+
+const mediaStageView = MediaPlayerView.create(elements.mediaStage, {
+  context: 'notch',
+  onCommand: (command, extra) => api.media(command, extra),
+  onBack: () => {
+    mediaMenuOverride = true;
+    setMediaMode(false);
+  },
+  onDetach: () => toggleMediaWindow(),
+  onError: (error) => setToast(error?.message || 'Medya komutu çalışmadı')
+});
 
 const PAGE_SIZE = 8;
 const ALARMS_STORAGE_KEY = 'notch-alarms';
@@ -176,6 +184,10 @@ const MENU_REORDER_EDGE_PX = 54;
 const MENU_REORDER_SCROLL_MS = 720;
 const MENU_REORDER_CANCEL_PX = 18;
 const NOTIFICATION_TICKER_MS = 9500;
+const AUDIO_MIXER_RETRY_MS = 3000;
+// styles.css içindeki content-extra-in / content-extra-out süreleriyle uyumlu olmalı.
+const CONTENT_EXTRAS_ENTER_MS = 520;
+const CONTENT_EXTRAS_LEAVE_MS = 200;
 const SEARCH_PARAMS = new URLSearchParams(window.location.search);
 const IS_STANDALONE_SETTINGS_WINDOW = SEARCH_PARAMS.get('settingsWindow') === '1';
 
@@ -267,70 +279,9 @@ const MENU_ITEMS = [
 ];
 
 const DEFAULT_MENU_ORDER = MENU_ITEMS.map((item) => item.action);
-const DEFAULT_CUSTOM_THEME = {
-  panel: '#0a0c10',
-  surface: '#171b22',
-  text: '#f4f7fb',
-  active: '#0f766e',
-  connected: '#2563eb'
-};
-
-const THEME_PRESETS = {
-  default: {
-    name: 'Gece',
-    colors: DEFAULT_CUSTOM_THEME
-  },
-  slate: {
-    name: 'Grafit',
-    colors: {
-      panel: '#111827',
-      surface: '#2d3748',
-      text: '#f8fafc',
-      active: '#0f766e',
-      connected: '#2563eb'
-    }
-  },
-  contrast: {
-    name: 'Kontrast',
-    colors: {
-      panel: '#04080d',
-      surface: '#202936',
-      text: '#f8fafc',
-      active: '#f59e0b',
-      connected: '#16a34a'
-    }
-  },
-  light: {
-    name: 'Light',
-    colors: {
-      panel: '#f8fafc',
-      surface: '#e2e8f0',
-      text: '#111827',
-      active: '#2563eb',
-      connected: '#059669'
-    }
-  },
-  forest: {
-    name: 'Forest',
-    colors: {
-      panel: '#07130f',
-      surface: '#12342a',
-      text: '#ecfdf5',
-      active: '#10b981',
-      connected: '#38bdf8'
-    }
-  },
-  ruby: {
-    name: 'Ruby',
-    colors: {
-      panel: '#17070c',
-      surface: '#3b111d',
-      text: '#fff1f2',
-      active: '#e11d48',
-      connected: '#f97316'
-    }
-  }
-};
+// Tema paletleri ayrı medya penceresiyle paylaşıldığı için themes.js içinde tanımlıdır.
+const DEFAULT_CUSTOM_THEME = NotchThemes.DEFAULT_CUSTOM_THEME;
+const THEME_PRESETS = NotchThemes.THEME_PRESETS;
 
 const CUSTOM_COLOR_FIELDS = [
   { key: 'panel', label: 'Ana panel' },
@@ -439,6 +390,7 @@ const DEFAULT_SETTINGS = {
     language: 'tr',
     settingsMode: 'advanced',
     mediaSource: 'spotify',
+    mediaPlayerStyle: 'modern',
     transparentCompactStrip: false,
     compactIdleDelaySeconds: 5,
     compactIdleOpacity: 45,
@@ -486,6 +438,15 @@ const DEFAULT_SETTINGS = {
     power: true,
     privacy: true
   },
+  gaming: {
+    enabled: true,
+    showFps: true,
+    showCpu: true,
+    showGpu: true,
+    showGpuTemp: false,
+    showRam: false,
+    customProcesses: ''
+  },
   integrations: Object.fromEntries(EXTERNAL_APPS.map((app) => [app.id, {
     connected: false,
     accent: app.accent || '#2563eb',
@@ -527,6 +488,9 @@ let notificationTimer;
 let activityTimer;
 let activeActivity = null;
 let privacyState = { camera: [], microphone: [] };
+let privacyQueue = [];
+let gameState = { active: false, processName: '' };
+let lastMetrics = null;
 let stripTransparencyTimer;
 let menuReorderScrollTimer;
 let dragState = null;
@@ -561,6 +525,10 @@ let networkExtras = {
 };
 let lastSettingsFingerprint = '';
 let settingsApplyTimer = null;
+let audioMixerRetryTimer = null;
+let contentExtrasMarkup = '';
+let contentExtrasEnterTimer = null;
+let contentExtrasLeaveTimer = null;
 
 function readPath(source, path) {
   return String(path || '').split('.').reduce((value, part) => (
@@ -681,6 +649,10 @@ function normalizeSettings(settings) {
       ...DEFAULT_SETTINGS.liveActivities,
       ...(settings?.liveActivities || {})
     },
+    gaming: {
+      ...DEFAULT_SETTINGS.gaming,
+      ...(settings?.gaming || {})
+    },
     integrations,
     features: {
       ...DEFAULT_SETTINGS.features,
@@ -769,10 +741,6 @@ function applyTheme() {
     normalizeCornerRadius(appSettings.appearance.cornerRadius),
     Math.floor(compactHeight / 2)
   );
-  const colors = colorTheme === 'custom'
-    ? appSettings.appearance.customTheme
-    : THEME_PRESETS[colorTheme]?.colors || THEME_PRESETS.default.colors;
-
   elements.notch.classList.toggle('theme-floating', notchStyle === 'floating');
   elements.notch.classList.toggle('theme-attached', notchStyle === 'attached');
   elements.notch.classList.toggle('theme-pill', notchStyle === 'pill');
@@ -787,19 +755,7 @@ function applyTheme() {
   const compactIdleOpacity = normalizeCompactIdleOpacity(appSettings.appearance.compactIdleOpacity);
   elements.notch.style.setProperty('--compact-idle-opacity', `${compactIdleOpacity}%`);
   elements.notch.style.setProperty('--compact-idle-text-opacity', String(compactIdleOpacity / 100));
-  const themeTokens = {
-    '--panel': hexToRgba(colors.panel, colorTheme === 'light' ? 0.98 : 0.985),
-    '--panel-2': hexToRgba(colors.surface, colorTheme === 'light' ? 0.94 : 0.92),
-    '--surface': hexToRgba(colors.surface, colorTheme === 'light' ? 0.92 : 0.96),
-    '--surface-hover': hexToRgba(colors.surface, colorTheme === 'light' ? 1 : 0.98),
-    '--text': colors.text,
-    '--active': colors.active,
-    '--connected': colors.connected,
-    '--muted': hexToRgba(colors.text, colorTheme === 'light' ? 0.62 : 0.68),
-    '--dim': hexToRgba(colors.text, colorTheme === 'light' ? 0.45 : 0.42),
-    '--line': hexToRgba(colors.text, colorTheme === 'light' ? 0.14 : 0.14),
-    '--surface-border': hexToRgba(colors.text, colorTheme === 'light' ? 0.16 : 0.12)
-  };
+  const themeTokens = NotchThemes.themeTokens(appSettings.appearance);
   Object.entries(themeTokens).forEach(([name, value]) => {
     elements.notch.style.setProperty(name, value);
     document.documentElement.style.setProperty(name, value);
@@ -834,19 +790,6 @@ function applyTheme() {
     sample.style.width = `${Math.min(220, compactWidth)}px`;
     sample.style.height = `${compactHeight}px`;
   });
-}
-
-function hexToRgba(hex, alpha) {
-  const normalized = String(hex || '#000000').replace('#', '');
-  const value = Number.parseInt(normalized, 16);
-  if (Number.isNaN(value)) {
-    return `rgba(0, 0, 0, ${alpha})`;
-  }
-
-  const red = (value >> 16) & 255;
-  const green = (value >> 8) & 255;
-  const blue = value & 255;
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function setToast(message) {
@@ -921,6 +864,7 @@ function integrationForNotification(notification) {
 function canShowLiveActivity() {
   return !IS_STANDALONE_SETTINGS_WINDOW
     && !activeAlarm
+    && overlayModeState === 'collapsed'
     && Boolean(elements.activityCompact)
     && !elements.notch.classList.contains('is-expanded');
 }
@@ -933,13 +877,16 @@ function showLiveActivity(activity) {
   if (!canShowLiveActivity()) {
     return;
   }
+  if (activeActivity?.kind === 'privacy' && activity.kind !== 'privacy') return;
 
   const isNewKind = activeActivity?.kind !== activity.kind;
   activeActivity = activity;
   clearTimeout(activityTimer);
 
   elements.activityIcon.innerHTML = iconSvg(activity.icon);
-  elements.activityLabel.textContent = activity.label || '';
+  elements.activityLabelText.textContent = activity.label || '';
+  elements.activityLabel.hidden = !activity.label;
+  elements.activityLabel.title = activity.label || '';
   elements.activityValue.textContent = activity.value || '';
   elements.activityCompact.dataset.kind = activity.kind;
   elements.activityCompact.dataset.tone = activity.tone || '';
@@ -963,7 +910,18 @@ function showLiveActivity(activity) {
   elements.activityCompact.hidden = false;
   elements.notch.classList.add('has-live-activity');
   revealCompactStrip();
-  activityTimer = setTimeout(hideLiveActivity, activity.durationMs || ACTIVITY_DISPLAY_MS.volume);
+  let durationMs = activity.durationMs || ACTIVITY_DISPLAY_MS.volume;
+  elements.activityLabelText.style.animation = 'none';
+  if (activity.kind === 'privacy') {
+    const start = elements.activityLabel.clientWidth;
+    const end = -elements.activityLabelText.scrollWidth;
+    durationMs = Math.max(4500, Math.ceil((start - end) / 55 * 1000));
+    elements.activityLabelText.style.setProperty('--privacy-scroll-start', `${start}px`);
+    elements.activityLabelText.style.setProperty('--privacy-scroll-end', `${end}px`);
+    elements.activityLabelText.getBoundingClientRect();
+    elements.activityLabelText.style.animation = `privacy-scroll ${durationMs}ms linear 1 both`;
+  }
+  activityTimer = setTimeout(hideLiveActivity, durationMs);
 }
 
 function hideLiveActivity() {
@@ -977,6 +935,7 @@ function hideLiveActivity() {
   delete elements.notch.dataset.activityTone;
   elements.activityCompact.hidden = true;
   elements.activityCompact.classList.remove('is-entering');
+  showNextPrivacyActivity();
   if (!elements.notch.matches(':hover')) {
     scheduleCompactStripTransparency();
   }
@@ -999,6 +958,9 @@ function renderPrivacyIndicator(state) {
 
   const cameraActive = privacyState.camera.length > 0;
   const microphoneActive = privacyState.microphone.length > 0;
+  elements.privacyCameraDot.innerHTML = iconSvg('camera');
+  elements.privacyMicrophoneDot.innerHTML = iconSvg('microphone');
+  elements.notch.style.setProperty('--privacy-space', `${(Number(cameraActive) + Number(microphoneActive)) * 18 + 12}px`);
   elements.privacyCameraDot.hidden = !cameraActive;
   elements.privacyMicrophoneDot.hidden = !microphoneActive;
   elements.privacyDots.hidden = !cameraActive && !microphoneActive;
@@ -1009,28 +971,33 @@ function renderPrivacyIndicator(state) {
   elements.notch.classList.toggle('has-privacy-indicator', cameraActive || microphoneActive);
 }
 
-function privacyStartActivity(started) {
+function privacyStartActivities(started) {
   const camera = namesFrom(started?.camera);
   const microphone = namesFrom(started?.microphone);
-  if (camera.length) {
+  return [...new Set([...camera, ...microphone])].map((name) => {
+    const usesCamera = camera.includes(name);
+    const usesMicrophone = microphone.includes(name);
+    const resource = usesCamera && usesMicrophone ? 'kameranı ve mikrofonunu' : usesCamera ? 'kameranı' : 'mikrofonunu';
     return {
       kind: 'privacy',
-      icon: 'camera',
-      tone: 'camera',
-      label: `${camera.join(', ')} kamerayı kullanıyor`,
-      durationMs: ACTIVITY_DISPLAY_MS.privacy
+      icon: usesCamera ? 'camera' : 'microphone',
+      tone: usesCamera ? 'camera' : 'microphone',
+      label: `${name} ${resource} kullanıyor`,
+      app: name,
+      resources: [usesCamera ? 'camera' : '', usesMicrophone ? 'microphone' : ''].filter(Boolean)
     };
+  });
+}
+
+function showNextPrivacyActivity() {
+  if (activeActivity || !canShowLiveActivity()) return;
+  while (privacyQueue.length) {
+    const activity = privacyQueue.shift();
+    if (activity.resources.every((resource) => privacyState[resource].includes(activity.app))) {
+      showLiveActivity(activity);
+      return;
+    }
   }
-  if (microphone.length) {
-    return {
-      kind: 'privacy',
-      icon: 'microphone',
-      tone: 'microphone',
-      label: `${microphone.join(', ')} mikrofonu kullanıyor`,
-      durationMs: ACTIVITY_DISPLAY_MS.privacy
-    };
-  }
-  return null;
 }
 
 function handleLiveActivity(event) {
@@ -1054,6 +1021,9 @@ function handleLiveActivity(event) {
       });
       return;
     case 'audio-output':
+      if (activeToolView === 'volumeMixer') {
+        refreshAudioMixer({ silent: true });
+      }
       showLiveActivity({
         kind: 'audio-output',
         deviceId: event.deviceId,
@@ -1092,11 +1062,19 @@ function handleLiveActivity(event) {
       });
       return;
     case 'privacy': {
+      const previous = privacyState;
       renderPrivacyIndicator(event);
-      const activity = privacyStartActivity(event.started);
-      if (activity) {
-        showLiveActivity(activity);
+      // Compare complete states so a delayed initial IPC reply cannot repeat an announcement.
+      const started = Object.fromEntries(['camera', 'microphone'].map((resource) => [
+        resource, privacyState[resource].filter((name) => !previous[resource].includes(name))
+      ]));
+      privacyQueue.push(...privacyStartActivities(started));
+      privacyQueue = privacyQueue.slice(-32);
+      if (activeActivity?.kind === 'privacy'
+        && !activeActivity.resources.every((resource) => privacyState[resource].includes(activeActivity.app))) {
+        hideLiveActivity();
       }
+      showNextPrivacyActivity();
       return;
     }
     default:
@@ -1164,32 +1142,95 @@ function updateClock() {
   renderContentExtras();
 }
 
+function finishHidingContentExtras() {
+  clearTimeout(contentExtrasLeaveTimer);
+  contentExtrasLeaveTimer = null;
+  // Değerler kalkınca max-content kısa içeriğe göre yeniden hesaplanır ve şerit önce daralıp sonra
+  // büyürdü. Mevcut genişlik piksel olarak sabitlenip oradan varsayılan genişliğe geçilir.
+  const strip = elements.notch.querySelector('.collapsed-strip');
+  const wasShown = elements.notch.classList.contains('has-content-extras');
+  const currentWidth = wasShown && strip ? strip.getBoundingClientRect().width : 0;
+  if (currentWidth) {
+    // Sabitleme kendi geçişini başlatmasın (max-content -> px); o geçiş içerik değişince yeniden hesaplanır.
+    strip.style.transition = 'none';
+    strip.style.width = `${currentWidth}px`;
+    strip.getBoundingClientRect();
+  }
+  elements.notch.classList.remove('has-content-extras', 'is-extras-leaving', 'is-extras-entering');
+  delete elements.notch.dataset.contentExtrasCount;
+  elements.contentExtras.hidden = true;
+  elements.contentExtras.dataset.count = '0';
+  if (contentExtrasMarkup) {
+    elements.contentExtras.innerHTML = '';
+    contentExtrasMarkup = '';
+  }
+  if (currentWidth) {
+    strip.getBoundingClientRect();
+    strip.style.transition = '';
+    strip.getBoundingClientRect();
+    strip.style.width = '';
+  }
+}
+
+// Saat her saniye çağırır; içerik değişmedikçe DOM'a dokunulmaz. Değerler açılınca şerit genişleyip öğeler
+// sırayla belirir, kapanınca öğeler solar ve şerit varsayılan genişliğine döner.
 function renderContentExtras() {
   if (!elements.contentExtras) {
     return;
   }
 
-  const extras = [];
+  const items = [];
   if (appSettings.content.showDownloadSpeed) {
-    extras.push(`<span class="content-extra-item" title="İndirme hızı"><span aria-hidden="true">↓</span><strong>${escapeHtml(compactExtraValue(networkExtras.downloadSpeed))}</strong></span>`);
-    extras.push(`<span class="content-extra-item" title="Yükleme hızı"><span aria-hidden="true">↑</span><strong>${escapeHtml(compactExtraValue(networkExtras.uploadSpeed))}</strong></span>`);
+    items.push({ title: 'İndirme hızı', label: '↓', hiddenLabel: true, value: networkExtras.downloadSpeed });
+    items.push({ title: 'Yükleme hızı', label: '↑', hiddenLabel: true, value: networkExtras.uploadSpeed });
   }
   if (appSettings.content.showPing) {
-    extras.push(`<span class="content-extra-item"><span>Ping</span><strong>${escapeHtml(compactExtraValue(networkExtras.ping))}</strong></span>`);
+    items.push({ title: '', label: 'Ping', value: networkExtras.ping });
   }
   if (appSettings.content.showHeadphoneBattery) {
-    extras.push(`<span class="content-extra-item"><span>Kulaklık</span><strong>${escapeHtml(compactExtraValue(networkExtras.headphoneBattery))}</strong></span>`);
+    items.push({ title: '', label: 'Kulaklık', value: networkExtras.headphoneBattery });
   }
 
-  elements.notch.classList.toggle('has-content-extras', extras.length > 0);
-  if (extras.length > 0) {
-    elements.notch.dataset.contentExtrasCount = String(extras.length);
-  } else {
-    delete elements.notch.dataset.contentExtrasCount;
+  const shown = elements.notch.classList.contains('has-content-extras')
+    && !elements.notch.classList.contains('is-extras-leaving');
+
+  if (!items.length) {
+    if (shown) {
+      elements.notch.classList.remove('is-extras-entering');
+      elements.notch.classList.add('is-extras-leaving');
+      clearTimeout(contentExtrasLeaveTimer);
+      contentExtrasLeaveTimer = setTimeout(finishHidingContentExtras, CONTENT_EXTRAS_LEAVE_MS);
+    } else if (!contentExtrasLeaveTimer) {
+      finishHidingContentExtras();
+    }
+    return;
   }
-  elements.contentExtras.hidden = extras.length === 0;
-  elements.contentExtras.dataset.count = String(extras.length);
-  elements.contentExtras.innerHTML = extras.join('');
+
+  clearTimeout(contentExtrasLeaveTimer);
+  contentExtrasLeaveTimer = null;
+  elements.notch.classList.remove('is-extras-leaving');
+  if (!shown) {
+    elements.notch.classList.add('is-extras-entering');
+    clearTimeout(contentExtrasEnterTimer);
+    contentExtrasEnterTimer = setTimeout(() => {
+      elements.notch.classList.remove('is-extras-entering');
+    }, CONTENT_EXTRAS_ENTER_MS + items.length * 70);
+  }
+
+  elements.notch.classList.add('has-content-extras');
+  elements.notch.dataset.contentExtrasCount = String(items.length);
+  elements.contentExtras.hidden = false;
+  elements.contentExtras.dataset.count = String(items.length);
+
+  const markup = items.map((item, index) => {
+    const titleAttribute = item.title ? ` title="${escapeHtml(item.title)}"` : '';
+    const label = item.hiddenLabel ? `<span aria-hidden="true">${item.label}</span>` : `<span>${escapeHtml(item.label)}</span>`;
+    return `<span class="content-extra-item" style="--extra-index:${index}"${titleAttribute}>${label}<strong>${escapeHtml(compactExtraValue(item.value))}</strong></span>`;
+  }).join('');
+  if (markup !== contentExtrasMarkup) {
+    elements.contentExtras.innerHTML = markup;
+    contentExtrasMarkup = markup;
+  }
 }
 
 function compactExtraValue(value) {
@@ -1230,30 +1271,60 @@ async function refreshNetworkExtras() {
 }
 
 function renderMetrics(metrics) {
+  lastMetrics = metrics;
   elements.cpuValue.textContent = `CPU ${metrics.cpu.usage ?? '--'}%`;
   elements.gpuValue.textContent = `GPU ${metrics.gpu.usage ?? '--'}%`;
   elements.ramValue.textContent = `RAM ${metrics.memory.usage ?? '--'}%`;
 
   const title = metrics.activeWindow.title || metrics.activeWindow.processName || 'Uygulama bekleniyor';
   elements.activeWindow.textContent = title;
+  renderGameCompact();
+}
+
+function renderGameCompact() {
+  if (!elements.gameCompact) return;
+  const active = !IS_STANDALONE_SETTINGS_WINDOW && gameState.active && appSettings.gaming.enabled;
+  const metrics = lastMetrics;
+  // Never keep the previous game's FPS after a foreground change.
+  const matches = metrics?.game?.processName === gameState.processName;
+  const value = (number, suffix = '') => Number.isFinite(number) ? `${number}${suffix}` : '—';
+  const items = [
+    ['showFps', 'FPS', value(matches ? metrics?.game?.fps : null)],
+    ['showCpu', 'CPU', value(metrics?.cpu?.usage, '%')],
+    ['showGpu', 'GPU', value(metrics?.gpu?.usage, '%')],
+    ['showGpuTemp', 'GPU', value(metrics?.gpu?.temp, '°C')],
+    ['showRam', 'RAM', value(metrics?.memory?.usage, '%')]
+  ].filter(([key]) => appSettings.gaming[key]);
+  elements.gameCompact.innerHTML = items.map(([, label, text]) => `<span>${label} <b>${text}</b></span>`).join('');
+  elements.gameCompact.hidden = !active || !items.length;
+  elements.notch.classList.toggle('has-game-metrics', active && items.length > 0);
+  elements.notch.style.setProperty('--game-strip-width', `${Math.max(250, items.length * 76 + 52)}px`);
+}
+
+function syncGameState(state) {
+  if (IS_STANDALONE_SETTINGS_WINDOW) return;
+  const wasActive = gameState.active;
+  gameState = { active: state?.active === true, processName: state?.processName || '' };
+  elements.notch.classList.toggle('is-gaming', gameState.active);
+  if (gameState.active && !wasActive) {
+    clearTimeout(expandTimer);
+    clearTimeout(collapseTimer);
+    resetStripPointer();
+    resetOverlayUiState();
+    overlayModeState = 'collapsed';
+    revealCompactStrip();
+    showNextPrivacyActivity();
+  }
+  renderGameCompact();
 }
 
 function renderMedia(media) {
   lastMediaState = media || null;
+  mediaStageView.update(lastMediaState);
 
   if (!media?.available) {
     elements.mediaTitle.textContent = 'Medya kontrolleri hazır';
     elements.mediaArtist.textContent = '';
-    elements.mediaStageTitle.textContent = 'Medya bekleniyor';
-    elements.mediaStageArtist.textContent = '';
-    elements.mediaAvatarText.textContent = 'S';
-    elements.mediaCover.hidden = true;
-    elements.mediaCover.removeAttribute('src');
-    elements.mediaAvatar.classList.remove('has-cover');
-    elements.mediaWaves.classList.remove('is-playing');
-    elements.mediaElapsed.textContent = '0:00';
-    elements.mediaDuration.textContent = '--:--';
-    elements.mediaProgress.style.width = '0%';
     setPlayPauseButtons('open');
     updateDynamicMediaMode();
     return;
@@ -1261,23 +1332,29 @@ function renderMedia(media) {
 
   elements.mediaTitle.textContent = media.title || 'Bilinmeyen parça';
   elements.mediaArtist.textContent = [media.artist, media.status].filter(Boolean).join(' - ');
-  elements.mediaStageApp.textContent = media.app || 'Medya';
-  elements.mediaStageTitle.textContent = media.title || 'Bilinmeyen parça';
-  elements.mediaStageArtist.textContent = media.artist || media.status || '';
-  if (media.thumbnailDataUrl) {
-    elements.mediaCover.src = media.thumbnailDataUrl;
-    elements.mediaCover.hidden = false;
-    elements.mediaAvatar.classList.add('has-cover');
-  } else {
-    elements.mediaAvatarText.textContent = media.avatarText || (media.app || 'M').slice(0, 1);
-    elements.mediaCover.hidden = true;
-    elements.mediaCover.removeAttribute('src');
-    elements.mediaAvatar.classList.remove('has-cover');
-  }
-  elements.mediaWaves.classList.toggle('is-playing', media.status === 'playing');
   setPlayPauseButtons(media.status);
-  updateMediaProgress();
   updateDynamicMediaMode();
+}
+
+function syncMediaWindowState(state) {
+  const open = state?.open === true;
+  mediaStageView.setDetached(open);
+  document.querySelectorAll('[data-toggle-media-window]').forEach((button) => {
+    button.setAttribute('aria-pressed', open ? 'true' : 'false');
+    button.classList.toggle('is-current', open);
+    button.title = open ? 'Ayrı medya penceresini kapat' : 'Medyayı ayrı pencerede aç';
+    if (button.classList.contains('inline-action')) {
+      button.textContent = open ? 'Pencereyi kapat' : 'Pencereyi aç';
+    }
+  });
+}
+
+async function toggleMediaWindow() {
+  try {
+    syncMediaWindowState(await api.toggleMediaWindow());
+  } catch (error) {
+    setToast(error?.message || 'Medya penceresi açılamadı');
+  }
 }
 
 function setPlayPauseButtons(status) {
@@ -1290,34 +1367,8 @@ function setPlayPauseButtons(status) {
   });
 }
 
-function formatMediaTime(ms) {
-  const totalSeconds = Math.max(0, Math.floor((ms || 0) / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${pad2(seconds)}`;
-}
-
-function currentMediaPosition(media) {
-  if (!media?.durationMs) {
-    return 0;
-  }
-
-  if (media.startedAt) {
-    return Math.min(Date.now() - media.startedAt, media.durationMs);
-  }
-
-  return Math.min(media.positionMs || 0, media.durationMs);
-}
-
 function updateMediaProgress() {
-  const media = lastMediaState;
-  const duration = media?.durationMs || 0;
-  const position = currentMediaPosition(media);
-  const ratio = duration ? Math.max(0, Math.min(1, position / duration)) : 0;
-
-  elements.mediaElapsed.textContent = formatMediaTime(position);
-  elements.mediaDuration.textContent = duration ? formatMediaTime(duration) : '--:--';
-  elements.mediaProgress.style.width = `${Math.round(ratio * 100)}%`;
+  mediaStageView.tick();
 }
 
 function hasDynamicMedia() {
@@ -1978,6 +2029,12 @@ function applySettings(settings, options = {}) {
 
   lastSettingsFingerprint = fingerprint;
   appSettings = nextSettings;
+  if (!appSettings.liveActivities.privacy) {
+    privacyQueue = [];
+    renderPrivacyIndicator(null);
+    if (activeActivity?.kind === 'privacy') hideLiveActivity();
+  }
+  renderGameCompact();
   applyTheme();
   syncCompactStripTransparency();
   applyLanguageText();
@@ -1992,6 +2049,9 @@ function applySettings(settings, options = {}) {
 
   document.querySelectorAll('[data-setting-select]').forEach((select) => {
     select.value = readPath(appSettings, select.dataset.settingSelect) || select.value;
+  });
+  document.querySelectorAll('[data-setting-input]').forEach((input) => {
+    if (document.activeElement !== input) input.value = readPath(appSettings, input.dataset.settingInput) || '';
   });
 
   const idleTransparencyEnabled = appSettings.appearance.transparentCompactStrip === true;
@@ -2015,6 +2075,10 @@ function applySettings(settings, options = {}) {
     const currentValue = readPath(appSettings, button.dataset.settingValue);
     button.classList.toggle('is-current', currentValue === button.dataset.value);
   });
+
+  const mediaPlayerStyle = MediaPlayerView.normalizeStyle(appSettings.appearance.mediaPlayerStyle);
+  mediaStageView.setStyle(mediaPlayerStyle);
+  elements.notch.classList.toggle('media-style-modern', mediaPlayerStyle === 'modern');
 
   syncFloatingVariantControls();
   if (options.force || contentChanged) {
@@ -2729,28 +2793,32 @@ function renderAudioMixer(mixer) {
 
   const sessions = Array.isArray(mixer?.sessions) ? mixer.sessions : [];
   if (!mixer?.available) {
-    elements.audioMixerList.innerHTML = '<div class="tool-empty">Ses mikseri kullanılamıyor.</div>';
+    elements.audioMixerList.innerHTML = `<div class="tool-empty">${escapeHtml(mixer?.message || 'Ses mikseri kullanılamıyor.')}</div>`;
+    scheduleAudioMixerRetry();
     return;
   }
+  clearTimeout(audioMixerRetryTimer);
 
   if (!sessions.length) {
     elements.audioMixerList.innerHTML = '<div class="tool-empty">Aktif ses oturumu yok.</div>';
     return;
   }
 
+  const multipleDevices = Number(mixer.deviceCount) > 1;
   elements.audioMixerList.innerHTML = sessions.map((session) => {
     const id = escapeHtml(session.id);
     const volume = Math.max(0, Math.min(100, Number(session.volume) || 0));
     const peak = Math.max(0, Math.min(100, Math.round((Number(session.peak) || 0) * 100)));
     const status = [
       session.systemSounds ? 'Sistem' : (session.pid ? `PID ${session.pid}` : ''),
-      session.active ? 'Aktif' : 'Boşta'
+      session.active ? 'Aktif' : 'Boşta',
+      multipleDevices && session.deviceName && !session.defaultDevice ? session.deviceName : ''
     ].filter(Boolean).join(' - ');
 
     const name = session.name || 'Uygulama';
     return `
       <div class="audio-session-row${session.muted ? ' is-muted' : ''}" data-audio-session-row="${id}">
-        <span class="tool-avatar" style="--avatar-hue:${avatarHue(name)}" aria-hidden="true">${avatarInitial(name)}</span>
+        ${appAvatarMarkup(name, session.iconDataUrl)}
         <div class="audio-session-main">
           <div class="audio-session-info">
             <strong>${escapeHtml(name)}</strong>
@@ -2770,16 +2838,29 @@ function renderAudioMixer(mixer) {
   }).join('');
 }
 
-async function refreshAudioMixer() {
+function scheduleAudioMixerRetry() {
+  clearTimeout(audioMixerRetryTimer);
+  audioMixerRetryTimer = setTimeout(() => {
+    if (activeToolView === 'volumeMixer') {
+      refreshAudioMixer({ silent: true });
+    }
+  }, AUDIO_MIXER_RETRY_MS);
+}
+
+async function refreshAudioMixer({ silent = false } = {}) {
   if (!elements.audioMixerList) {
     return;
   }
 
-  elements.audioMixerList.innerHTML = '<div class="tool-empty">Ses oturumları okunuyor...</div>';
+  if (!silent) {
+    elements.audioMixerList.innerHTML = '<div class="tool-empty">Ses oturumları okunuyor...</div>';
+  }
   try {
     renderAudioMixer(await api.getAudioMixer());
   } catch (error) {
-    elements.audioMixerList.innerHTML = `<div class="tool-empty">${escapeHtml(error.message || 'Ses mikseri okunamadı.')}</div>`;
+    const message = String(error?.message || '').replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '');
+    elements.audioMixerList.innerHTML = `<div class="tool-empty">${escapeHtml(message || 'Ses mikseri okunamadı.')}</div>`;
+    scheduleAudioMixerRetry();
   }
 }
 
@@ -2827,6 +2908,16 @@ function avatarInitial(text) {
   return escapeHtml(first ? first.toLocaleUpperCase('tr-TR') : '?');
 }
 
+const APP_ICON_DATA_URL_PATTERN = /^data:image\/(?:png|jpeg|gif|bmp|webp|x-icon);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+// Uygulamanın kendi logosu varsa onu, yoksa adının baş harfini gösteren avatar.
+function appAvatarMarkup(name, iconDataUrl) {
+  if (typeof iconDataUrl === 'string' && APP_ICON_DATA_URL_PATTERN.test(iconDataUrl)) {
+    return `<span class="tool-avatar has-icon" aria-hidden="true"><img src="${iconDataUrl}" alt="" draggable="false" /></span>`;
+  }
+  return `<span class="tool-avatar" style="--avatar-hue:${avatarHue(name)}" aria-hidden="true">${avatarInitial(name)}</span>`;
+}
+
 function syncRangeFill(input) {
   if (!input) {
     return;
@@ -2854,7 +2945,7 @@ function renderNotificationCenter() {
     const appName = notification.app || notification.title || 'Bildirim';
     return `
       <article class="notification-row">
-        <span class="tool-avatar" style="--avatar-hue:${avatarHue(appName)}" aria-hidden="true">${avatarInitial(appName)}</span>
+        ${appAvatarMarkup(appName, notification.appIcon)}
         <div class="notification-row-content">
           <div class="notification-row-meta">
             <span class="notification-app">${escapeHtml(appName)}</span>
@@ -3430,6 +3521,7 @@ function syncOverlayMode(mode) {
     elements.notch.classList.remove('is-expanded', 'is-settings', 'is-tool', 'is-collapsing');
     setMediaMode(false);
     setAlarmMode(false);
+    showNextPrivacyActivity();
   }
 }
 
@@ -3814,7 +3906,7 @@ function bindEvents() {
   const COLLAPSE_ANIMATION_MS = 200;
 
   const showExpandedPanel = () => {
-    if (isSettingsOpen || isToolOpen) {
+    if (gameState.active || isSettingsOpen || isToolOpen) {
       return;
     }
     syncStripClipSize();
@@ -3907,6 +3999,7 @@ function bindEvents() {
   });
 
   function beginHoverIntent() {
+    if (gameState.active) return;
     revealCompactStrip();
     clearTimeout(expandTimer);
     if (isSettingsOpen || isToolOpen) {
@@ -3924,6 +4017,7 @@ function bindEvents() {
 
     // Kısa dokunuşlarda pencere büyüyüp şerit kaymasın diye hover niyeti bekle.
     expandTimer = setTimeout(() => {
+      if (gameState.active) return;
       const startWidth = window.innerWidth;
       const startHeight = window.innerHeight;
       let fallbackTimer;
@@ -4036,9 +4130,11 @@ function bindEvents() {
     closeToolView();
   });
 
-  document.querySelector('[data-media-back]').addEventListener('click', () => {
-    mediaMenuOverride = true;
-    setMediaMode(false);
+  document.querySelectorAll('[data-toggle-media-window]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleMediaWindow();
+    });
   });
 
   elements.alarmForm.addEventListener('submit', (event) => {
@@ -4402,6 +4498,16 @@ function bindEvents() {
     } catch (error) {
       setToast(error.message || 'Dil kaydedilemedi');
     }
+  });
+
+  document.querySelectorAll('[data-setting-input]').forEach((input) => {
+    input.addEventListener('change', async () => {
+      try {
+        await updateSetting(input.dataset.settingInput, input.value);
+      } catch (error) {
+        setToast(error.message || 'Ayar kaydedilemedi');
+      }
+    });
   });
 
   document.querySelectorAll('[data-setting-select]').forEach((select) => {
@@ -4790,12 +4896,16 @@ async function start() {
   setInterval(updateClock, 1000);
   setInterval(updatePomodoroTick, 1000);
   setInterval(checkAlarms, 1000);
-  setInterval(updateMediaProgress, 1000);
+  setInterval(updateMediaProgress, 500);
   setInterval(refreshNetworkExtras, 8000);
   refreshNetworkExtras().catch(() => {});
 
   api.onMetrics(renderMetrics);
+  api.onGameState(syncGameState);
+  api.getGameState().then(syncGameState).catch(() => {});
   api.onMedia(renderMedia);
+  api.onMediaWindowState(syncMediaWindowState);
+  api.getMediaWindowState().then(syncMediaWindowState).catch(() => {});
   api.onControls(applyControlStates);
   api.onSettings(async (settings) => {
     const nextSettings = normalizeSettings(settings);
@@ -4813,7 +4923,7 @@ async function start() {
   api.onActivity(handleLiveActivity);
   api.getPrivacyState().then((state) => {
     if (state) {
-      renderPrivacyIndicator(state);
+      handleLiveActivity({ type: 'privacy', ...state });
     }
   }).catch(() => {});
   api.onScreenVideoShow(() => {

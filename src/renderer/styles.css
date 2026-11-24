@@ -115,12 +115,14 @@ svg {
   /* Panelin üstünde durur; kapanışta küçülen panelin yerine çapraz geçişle döner. */
   z-index: 2;
   opacity: 1;
+  /* Ağ/ping değerleri açılınca genişlik max-content olur; bu sayede o geçiş de yumuşak olur. */
+  interpolate-size: allow-keywords;
   transition:
     opacity 120ms ease 80ms,
     background 300ms ease,
     border-color 300ms ease,
     border-radius 160ms ease,
-    width 160ms ease,
+    width 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
     height 160ms ease;
 }
 
@@ -582,6 +584,40 @@ svg {
   font-weight: 600;
 }
 
+/* Değerler açılırken sırayla süzülerek belirir, kapanırken solar (süreler renderer.js ile uyumlu). */
+.notch.is-extras-entering .content-extra-item {
+  animation: content-extra-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(140ms + var(--extra-index, 0) * 70ms);
+}
+
+.notch.is-extras-leaving .content-extra-item {
+  animation: content-extra-out 200ms ease both;
+}
+
+@keyframes content-extra-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.94);
+    filter: blur(3px);
+  }
+}
+
+@keyframes content-extra-out {
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+    filter: blur(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notch.is-extras-entering .content-extra-item,
+  .notch.is-extras-leaving .content-extra-item {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
+
 .settings-button {
   width: 30px;
   height: 30px;
@@ -870,14 +906,12 @@ footer {
   background: #1db954;
 }
 
-.media-mini .screen-video-control,
-.media-stage-controls .screen-video-control {
+.media-mini .screen-video-control {
   color: var(--active);
   background: color-mix(in srgb, var(--active) 42%, var(--surface-soft));
 }
 
-.media-mini .screen-video-control:hover,
-.media-stage-controls .screen-video-control:hover {
+.media-mini .screen-video-control:hover {
   background: color-mix(in srgb, var(--active) 58%, var(--surface-hover));
 }
 
@@ -911,6 +945,16 @@ footer {
 
 #mediaArtist {
   max-width: 90px;
+}
+
+.media-mini .media-window-toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.media-mini .media-window-toggle.is-current {
+  color: #06130a;
+  background: var(--active);
 }
 
 .control-center.is-media-mode {
@@ -1095,213 +1139,62 @@ footer {
   background: #dc2626;
 }
 
+/* Medya sahnesinin içi mediaPlayer.js + media-player.css ile çizilir. */
 .media-stage {
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 32px 64px minmax(0, 1fr) 38px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 4px 8px;
 }
 
 .media-stage[hidden] {
   display: none;
 }
 
-.media-back {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--surface);
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
-.media-back:hover {
-  background: var(--surface-hover);
-}
-
-.media-back svg {
-  width: 18px;
-  height: 18px;
-}
-
-.media-avatar {
-  width: 60px;
-  height: 60px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 18px;
-  background: #1db954;
-  color: #06130a;
-  font-size: 26px;
-  font-weight: 700;
-  overflow: hidden;
-}
-
-.media-avatar.has-cover {
-  color: transparent;
-  background-color: var(--surface);
-}
-
-.media-cover {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.media-cover[hidden],
-.media-avatar.has-cover .media-avatar-text {
+/* Ayrı pencere butonu üst satırda yalnızca tema uyumlu medya görünümünde gösterilir. */
+.topbar-media-window {
   display: none;
 }
 
-.media-detail {
-  min-width: 0;
+.notch:not(.media-style-modern) .control-center.is-media-mode .topbar-media-window {
   display: grid;
-  gap: 6px;
 }
 
-.media-app {
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  text-transform: uppercase;
+.topbar-media-window svg {
+  width: 16px;
+  height: 16px;
 }
 
-.media-stage-title,
-.media-stage-artist {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.topbar-media-window.is-current {
+  color: var(--active);
 }
 
-.media-stage-title {
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 1.08;
+/* Tema uyumlu medya görünümü: saat satırıyla içerik arasındaki boşluk daraltılır, alt kenarda pay kalır. */
+.notch:not(.media-style-modern) .control-center.is-media-mode {
+  gap: 4px;
 }
 
-.media-stage-artist {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
+/* Modern kart: çentikteki saat satırı gizlenir, kart tüm paneli kaplar. */
+.notch.is-media.media-style-modern .expanded-panel {
+  height: 190px;
 }
 
-.media-timeline {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 34px;
-  align-items: center;
-  gap: 8px;
-  color: var(--dim);
-  font-size: 10px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.notch.media-style-modern .control-center.is-media-mode {
+  grid-template-rows: minmax(0, 1fr);
+  padding: 10px;
 }
 
-.media-track {
-  height: 5px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 18%, transparent);
+.notch.media-style-modern .control-center.is-media-mode .dynamic-topbar {
+  display: none;
 }
 
-.media-track span {
-  width: 0;
+.notch.media-style-modern .control-center.is-media-mode .media-stage {
   height: 100%;
-  display: block;
-  border-radius: inherit;
-  background: #1db954;
-  transition: width 220ms linear;
-}
-
-.media-stage-controls {
-  display: flex;
-  justify-self: center;
-  justify-content: center;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-}
-
-.media-stage-controls button {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--text);
-}
-
-.media-stage-controls button.primary {
-  background: #1db954;
-  color: #06130a;
-}
-
-.media-stage-controls button:hover {
-  background: var(--surface-hover);
-}
-
-.media-stage-controls button.primary:hover {
-  background: var(--connected);
-}
-
-.media-waves {
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-}
-
-.media-waves span {
-  width: 3px;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
-  transform-origin: center;
-}
-
-.media-waves.is-playing span {
-  background: #1db954;
-  animation: media-wave 760ms ease-in-out infinite;
-}
-
-.media-waves.is-playing span:nth-child(2) {
-  animation-delay: 90ms;
-}
-
-.media-waves.is-playing span:nth-child(3) {
-  animation-delay: 180ms;
-}
-
-.media-waves.is-playing span:nth-child(4) {
-  animation-delay: 270ms;
-}
-
-.media-waves.is-playing span:nth-child(5) {
-  animation-delay: 360ms;
-}
-
-.media-waves.is-playing span:nth-child(6) {
-  animation-delay: 450ms;
-}
-
-@keyframes media-wave {
-  0%,
-  100% {
-    height: 9px;
-  }
-
-  50% {
-    height: 30px;
-  }
 }
 
 .toast {
@@ -1811,6 +1704,19 @@ input.tool-range:disabled {
   color: hsl(var(--avatar-hue) 80% 88%);
   font-size: 14px;
   font-weight: 600;
+}
+
+.tool-avatar.has-icon {
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.tool-avatar.has-icon img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .audio-mixer-list {
@@ -4270,12 +4176,16 @@ input.settings-search::placeholder {
 }
 
 .privacy-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 6px currentColor;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 16px;
   animation: privacy-dot-in 240ms ease-out both;
+}
+
+.privacy-dot svg {
+  width: 14px;
+  height: 14px;
 }
 
 .privacy-dot.is-camera {
@@ -4288,7 +4198,67 @@ input.settings-search::placeholder {
 
 .notch.has-privacy-indicator .collapsed-strip,
 .notch.theme-compact.has-privacy-indicator .collapsed-strip {
-  padding-right: 26px;
+  padding-right: var(--privacy-space, 48px);
+}
+
+.activity-compact[data-kind="privacy"] .activity-label {
+  text-overflow: clip;
+}
+
+#activityLabelText {
+  display: inline-block;
+}
+
+@keyframes privacy-scroll {
+  from { transform: translateX(var(--privacy-scroll-start)); }
+  to { transform: translateX(var(--privacy-scroll-end)); }
+}
+
+.game-compact {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 10px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.game-compact b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.notch.has-game-metrics .compact-clock,
+.notch.has-game-metrics .content-extras,
+.notch.has-game-metrics .alarm-compact,
+.notch.has-live-activity .game-compact {
+  display: none;
+}
+
+.notch.has-game-metrics .collapsed-strip,
+.notch.theme-compact.has-game-metrics .collapsed-strip {
+  width: max(var(--compact-width, 250px), var(--game-strip-width, 250px));
+  max-width: calc(100% - 4px);
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: stretch;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.notch.has-game-metrics.has-privacy-indicator .collapsed-strip {
+  padding-right: var(--privacy-space, 48px);
+}
+
+.notch.is-gaming {
+  pointer-events: none;
+}
+
+.notch.is-gaming .expanded-panel {
+  display: none;
 }
 
 @keyframes activity-enter {
@@ -4340,6 +4310,10 @@ input.settings-search::placeholder {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  #activityLabelText {
+    animation: none !important;
+    transform: none;
+  }
   .activity-compact.is-entering,
   .activity-compact .activity-icon svg,
   .privacy-dot {

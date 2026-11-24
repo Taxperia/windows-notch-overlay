@@ -1,0 +1,176 @@
+* {
+  box-sizing: border-box;
+}
+
+/* İframe'lerdeki sayfalar koyu renk şeması kullanır; şema farklı olursa Chromium iframe'e opak zemin çizer. */
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  width: 960px;
+  height: 540px;
+  margin: 0;
+  overflow: hidden;
+  background: #0b1020;
+  font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  cursor: none;
+}
+
+.wallpaper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 15% 110%, #1d3b8f 0%, transparent 55%),
+    radial-gradient(90% 80% at 100% 0%, #5b2a86 0%, transparent 55%),
+    linear-gradient(160deg, #0d1330 0%, #161a3a 45%, #0c1226 100%);
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+}
+
+.blob-a { width: 340px; height: 340px; left: -60px; top: 220px; background: #2563eb; }
+.blob-b { width: 300px; height: 300px; right: 40px; top: -80px; background: #9333ea; }
+.blob-c { width: 260px; height: 260px; right: 260px; bottom: -120px; background: #0ea5a4; opacity: 0.35; }
+
+.intro {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: #fff;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  transition: opacity 600ms ease, transform 600ms ease;
+}
+
+.intro strong {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.intro span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 17px;
+}
+
+.intro.is-hidden {
+  opacity: 0;
+  transform: translate(-50%, -46%);
+}
+
+.notch-frame,
+.media-frame {
+  position: absolute;
+  border: 0;
+  background: transparent;
+  color-scheme: dark;
+}
+
+/* Gerçek uygulamada çentik "screen-saver" seviyesinde, medya penceresinin üstündedir. */
+.notch-frame {
+  left: 228px;
+  top: 0;
+  z-index: 20;
+  width: 504px;
+  height: 36px;
+}
+
+.media-frame {
+  z-index: 10;
+  opacity: 0;
+  transform: scale(0.94);
+  transform-origin: top left;
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.media-frame.is-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.caption {
+  position: absolute;
+  left: 28px;
+  bottom: 26px;
+  max-width: 460px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(10, 12, 20, 0.62);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 280ms ease, transform 280ms ease;
+  backdrop-filter: blur(10px);
+}
+
+.caption.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.caption small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.cursor svg {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  fill: #fff;
+  stroke: #0b1020;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45));
+}
+
+.cursor .ripple {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  transform: scale(0.3);
+}
+
+.cursor.is-clicking .ripple {
+  animation: ripple 420ms ease-out;
+}
+
+@keyframes ripple {
+  0% { opacity: 0.8; transform: scale(0.3); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
