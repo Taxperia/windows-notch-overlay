@@ -1,6 +1,24 @@
 const assert = require('node:assert/strict');
-const test = require('node:test');
-const { normalizeMediaCommand, normalizeWinRtMedia } = require('../src/main/media');
+const Module = require('node:module');
+const { mock, test } = require('node:test');
+
+const mediaPath = require.resolve('../src/main/media');
+const loadModule = Module._load;
+const win32Mock = mock.method(Module, '_load', function loadWithoutWindowsBindings(request, parent, isMain) {
+  if (request === './win32' && parent?.filename === mediaPath) {
+    return {};
+  }
+  return loadModule.call(this, request, parent, isMain);
+});
+
+let mediaModule;
+try {
+  mediaModule = require(mediaPath);
+} finally {
+  win32Mock.mock.restore();
+}
+
+const { normalizeMediaCommand, normalizeWinRtMedia } = mediaModule;
 
 test('media commands are allow-listed and seek positions are validated', () => {
   assert.deepEqual(normalizeMediaCommand('playPause'), { name: 'playPause', args: [] });
